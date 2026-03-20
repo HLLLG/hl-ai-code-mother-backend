@@ -15,12 +15,12 @@ public class PageRequest implements Serializable {
     /**
      * 当前页码，默认为1
      */
-    private int pageNum = 1;
+    private long pageNum = 1;
 
     /**
      * 每页条数，默认为10
      */
-    private int pageSize = 10;
+    private long pageSize = 10;
 
     /**
      * 排序字段，默认为空

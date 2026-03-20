@@ -15,5 +15,5 @@ public class DeleteRequest implements Serializable {
     /**
      * 要删除的ID
      */
-    private String id;
+    private Long id;
 }
