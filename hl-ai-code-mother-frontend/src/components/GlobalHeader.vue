@@ -19,25 +19,36 @@
     </div>
 
     <div class="header-actions">
-      <Button class="login-button">登录</Button>
+      <div v-if="loginUserStore.loginUser.id">
+        <a-space>
+          <a-avatar :src="loginUserStore.loginUser.userAvatar"></a-avatar>
+          {{ loginUserStore.loginUser.userName ?? '无名' }}
+        </a-space>
+      </div>
+      <div v-else>
+        <a-button class="login-button" href="/user/login">登录</a-button>
+      </div>
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
+import type { CSSProperties } from 'vue'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Button, Menu } from 'ant-design-vue'
-import type { CSSProperties } from 'vue'
 import type { MenuProps } from 'ant-design-vue'
+import { Menu } from 'ant-design-vue'
 
 import logoUrl from '@/assets/logo.png'
 import type { MenuItemConfig } from '@/config/menu.ts'
+import { userLoginStore } from '@/stores/loginUser.ts'
 
 const props = defineProps<{
   title: string
   menuItems: MenuItemConfig[]
 }>()
+
+const loginUserStore = userLoginStore()
 
 const route = useRoute()
 const router = useRouter()
@@ -107,7 +118,12 @@ const onMenuClick: MenuProps['onClick'] = ({ key }) => {
   border-radius: 24px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)) padding-box,
-    linear-gradient(120deg, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.12), rgba(120, 200, 255, 0.24))
+    linear-gradient(
+        120deg,
+        rgba(255, 255, 255, 0.38),
+        rgba(255, 255, 255, 0.12),
+        rgba(120, 200, 255, 0.24)
+      )
       border-box;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
@@ -253,14 +269,22 @@ const onMenuClick: MenuProps['onClick'] = ({ key }) => {
 }
 
 .header-menu :deep(.ant-menu-item:hover) {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.06)) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.14),
+    rgba(255, 255, 255, 0.06)
+  ) !important;
   border-color: rgba(255, 255, 255, 0.18);
   color: #ffffff !important;
   transform: translateY(-1px);
 }
 
 .header-menu :deep(.ant-menu-item-selected) {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.12)) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.28),
+    rgba(255, 255, 255, 0.12)
+  ) !important;
   border-color: rgba(255, 255, 255, 0.26);
   color: #ffffff !important;
   box-shadow:
@@ -278,12 +302,11 @@ const onMenuClick: MenuProps['onClick'] = ({ key }) => {
 
 .login-button {
   flex-shrink: 0;
-  height: 42px;
   padding-inline: 18px;
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 999px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.78));
-  color: #1677ff;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.78));
+  color: black;
   font-weight: 600;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.56),

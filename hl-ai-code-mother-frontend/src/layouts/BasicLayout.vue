@@ -42,7 +42,7 @@ const { Header: ALayoutHeader, Content: ALayoutContent, Footer: ALayoutFooter } 
   height: auto;
   line-height: normal;
   padding: 0;
-  background: linear-gradient(90deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(90deg, #bbb 0%, #888888 100%);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
