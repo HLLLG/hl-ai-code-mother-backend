@@ -20,10 +20,20 @@
 
     <div class="header-actions">
       <div v-if="loginUserStore.loginUser.id">
-        <a-space>
-          <a-avatar :src="loginUserStore.loginUser.userAvatar"></a-avatar>
-          {{ loginUserStore.loginUser.userName ?? '无名' }}
-        </a-space>
+        <a-dropdown>
+          <a-space>
+            <a-avatar :src="loginUserStore.loginUser.userAvatar"></a-avatar>
+            {{ loginUserStore.loginUser.userName ?? '无名' }}
+          </a-space>
+          <template #overlay>
+            <a-menu>
+              <a-menu-item @click="doLogout">
+                <LogoutOutlined />
+                退出登录
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
       </div>
       <div v-else>
         <a-button class="login-button" href="/user/login">登录</a-button>
@@ -36,22 +46,41 @@
 import type { CSSProperties } from 'vue'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { MenuProps } from 'ant-design-vue'
+import { type MenuProps, message } from 'ant-design-vue'
 import { Menu } from 'ant-design-vue'
 
 import logoUrl from '@/assets/logo.png'
 import type { MenuItemConfig } from '@/config/menu.ts'
 import { userLoginStore } from '@/stores/loginUser.ts'
+import { LogoutOutlined } from '@ant-design/icons-vue'
+import { userLogout } from '@/api/userController.ts'
 
 const props = defineProps<{
   title: string
-  menuItems: MenuItemConfig[]
+  originItems: MenuItemConfig[]
 }>()
 
 const loginUserStore = userLoginStore()
 
 const route = useRoute()
 const router = useRouter()
+
+// 过滤菜单项
+const filterMenus = (menus: MenuItemConfig[] = []) => {
+  return menus.filter((item) => {
+    const itemPath = item.path
+    if (itemPath?.startsWith('/admin')) {
+      const loginUser = loginUserStore.loginUser
+      if (!loginUser || loginUser.userRole !== 'admin') {
+        return false
+      }
+    }
+    return true
+  }) as MenuItemConfig[]
+}
+
+// 展示在菜单的路由数组
+const menuItems = computed(() => filterMenus(props.originItems))
 
 const menuStyle: CSSProperties = {
   '--ant-menu-item-color': 'rgba(255, 255, 255, 0.84)',
@@ -70,7 +99,7 @@ const menuStyle: CSSProperties = {
 } as CSSProperties
 
 const selectedKeys = computed(() => {
-  const matchedItem = props.menuItems.find((item) => {
+  const matchedItem = (menuItems.value ?? []).find((item) => {
     if (!('path' in item) || !item.path) {
       return false
     }
@@ -88,7 +117,7 @@ const goHome = () => {
 }
 
 const onMenuClick: MenuProps['onClick'] = ({ key }) => {
-  const target = props.menuItems.find((item) => String(item.key) === String(key))
+  const target = (menuItems.value ?? []).find((item) => String(item.key) === String(key))
 
   if (!target) {
     return
@@ -101,6 +130,20 @@ const onMenuClick: MenuProps['onClick'] = ({ key }) => {
 
   if ('path' in target && target.path && target.path !== route.path) {
     router.push(target.path)
+  }
+}
+
+// 退出登录
+const doLogout = async () => {
+  const res = await userLogout()
+  if (res.data.code === 0) {
+    loginUserStore.setLoginUser({
+      userName: '未登录',
+    })
+    message.success('退出登录成功')
+    await router.push('/user/login')
+  } else {
+    message.error('退出登录失败，' + res.data.message)
   }
 }
 </script>

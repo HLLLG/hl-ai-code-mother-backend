@@ -2,7 +2,7 @@
   <Layout class="basic-layout">
     <ALayoutHeader class="layout-header">
       <div class="header-container">
-        <GlobalHeader title="HL应用生成" :menu-items="menuItems" />
+        <GlobalHeader title="HL应用生成" :originItems="menuItems" />
       </div>
     </ALayoutHeader>
 

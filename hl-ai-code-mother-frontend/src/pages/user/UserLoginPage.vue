@@ -23,7 +23,9 @@
       </div>
 
       <a-form-item>
-        <a-button type="primary" html-type="submit" style="width: 100%">登录</a-button>
+        <a-button class="login-button" type="primary" html-type="submit" style="width: 100%"
+          >登录</a-button
+        >
       </a-form-item>
     </a-form>
   </div>
@@ -53,7 +55,7 @@ const handleSubmit = async (values: any) => {
       replace: true,
     })
   } else {
-    message.error('登录失败' + res.data.message)
+    message.error('登录失败,' + res.data.message)
   }
 }
 </script>
@@ -77,5 +79,24 @@ const handleSubmit = async (values: any) => {
   text-align: right;
   font-size: 13px;
   color: #bbbbbb;
+  margin-bottom: 12px;
+}
+
+.login-button {
+  flex-shrink: 0;
+  padding-inline: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(25, 25, 0, 0.56), rgba(255, 255, 255, 0.14));
+  color: black;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.56),
+    0 10px 24px rgba(10, 56, 132, 0.18);
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    background-color 0.25s ease,
+    border-color 0.25s ease;
 }
 </style>
