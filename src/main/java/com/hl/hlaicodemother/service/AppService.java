@@ -6,6 +6,7 @@ import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.vo.AppVO;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 
@@ -15,6 +16,15 @@ import java.util.List;
  * @author <a href="https://github.com/HLLLG">程序员HL</a>
  */
 public interface AppService extends IService<App> {
+
+    /**
+     * 与AI模型对话，生成代码
+     * @param appId
+     * @param message
+     * @param user
+     * @return
+     */
+    Flux<String> chatToGenCode(Long appId, String message, User user);
 
     /**
      * 校验应用参数

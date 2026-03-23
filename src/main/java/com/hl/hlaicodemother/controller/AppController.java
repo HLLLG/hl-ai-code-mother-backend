@@ -24,7 +24,9 @@ import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.BeanUtils;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -45,6 +47,24 @@ public class AppController {
 
     @Resource
     private UserService userService;
+
+    /**
+     * 与AI模型对话，生成代码
+     * @param appId
+     * @param message
+     * @param request
+     * @return
+     */
+    @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<String> chatToGenCode(@RequestParam Long appId,@RequestParam String message,
+                                                    HttpServletRequest request) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
+        ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "用户输入不能为空");
+        // 获取登录用户
+        User loginUser = userService.getLoginUser(request);
+        // 调用服务层方法，获取生成结果
+        return appService.chatToGenCode(appId, message, loginUser);
+    }
 
     /**
      * 创建应用
