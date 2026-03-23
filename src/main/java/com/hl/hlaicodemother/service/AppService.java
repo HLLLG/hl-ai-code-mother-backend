@@ -1,0 +1,57 @@
+package com.hl.hlaicodemother.service;
+
+import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
+import com.hl.hlaicodemother.model.entity.App;
+import com.hl.hlaicodemother.model.entity.User;
+import com.hl.hlaicodemother.model.vo.AppVO;
+import com.mybatisflex.core.query.QueryWrapper;
+import com.mybatisflex.core.service.IService;
+
+import java.util.List;
+
+/**
+ * 应用 服务层。
+ *
+ * @author <a href="https://github.com/HLLLG">程序员HL</a>
+ */
+public interface AppService extends IService<App> {
+
+    /**
+     * 校验应用参数
+     *
+     * @param app 应用
+     * @param add 是否为创建校验
+     */
+    void validApp(App app, boolean add);
+
+    /**
+     * 获取appvo对象
+     *
+     * @return 应用详情
+     */
+    AppVO getAppVO(App app);
+
+    /**
+     * 获取appvo列表
+     *
+     * @return 应用详情列表
+     */
+    List<AppVO> getAppVOList(List<App> appList);
+
+    /**
+     * 校验应用归属
+     *
+     * @param app 应用
+     * @param user 用户
+     */
+    void checkAppOwner(App app, User user);
+
+    /**
+     * 构造用户查询条件
+     *
+     * @param appQueryRequest 查询请求
+     * @return 查询条件
+     */
+    QueryWrapper getQueryWrapper(AppQueryRequest appQueryRequest);
+
+}
