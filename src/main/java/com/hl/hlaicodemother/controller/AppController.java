@@ -1,6 +1,7 @@
 package com.hl.hlaicodemother.controller;
 
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import com.hl.hlaicodemother.annotation.AuthCheck;
 import com.hl.hlaicodemother.common.BaseResponse;
 import com.hl.hlaicodemother.common.DeleteRequest;
@@ -25,11 +26,14 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.BeanUtils;
 import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 应用 控制层。
@@ -56,14 +60,48 @@ public class AppController {
      * @return
      */
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> chatToGenCode(@RequestParam Long appId,@RequestParam String message,
+    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,@RequestParam String message,
                                                     HttpServletRequest request) {
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "用户输入不能为空");
         // 获取登录用户
         User loginUser = userService.getLoginUser(request);
         // 调用服务层方法，获取生成结果
-        return appService.chatToGenCode(appId, message, loginUser);
+        Flux<String> contentFlux = appService.chatToGenCode(appId, message, loginUser);
+        // 对数据块进行封装，防止前端空白丢失
+        return contentFlux
+                .map(chunk -> {
+                    Map<String, String> wrapper = Map.of("d", chunk);
+                    // 将 wrapper 转换为 JSON 字符串
+                    String jsonStr = JSONUtil.toJsonStr(wrapper);
+                    // 使用ServerSentEvent格式封装数据块，前端可以直接解析
+                    return ServerSentEvent.<String>builder()
+                            .data(jsonStr)
+                            .build();
+                })
+                .concatWith(Mono.just(
+                        // 发送结束事件
+                        ServerSentEvent.<String>builder()
+                                .event("done")
+                                .data("")
+                                .build()
+                ));
+    }
+
+    /**
+     * 部署应用
+     * @param appId
+     * @param request
+     * @return
+     */
+    @PostMapping("/deploy")
+    public BaseResponse<String> deployApp(@RequestParam Long appId, HttpServletRequest request) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
+        // 获取登录用户
+        User loginUser = userService.getLoginUser(request);
+        // 调用服务层方法，部署应用
+        String deployUrl = appService.deployApp(appId, loginUser);
+        return ResultUtils.success(deployUrl);
     }
 
     /**
@@ -90,7 +128,7 @@ public class AppController {
             // 默认多文件生成
             app.setCodeGenType(CodeGenTypeEnum.MULTI_FILE.getValue());
         }
-        app.setPriority(0);
+        app.setPriority(AppConstant.DEFAULT_APP_PRIORITY);
         app.setUserId(loginUser.getId());
         // 校验应用是否合法
         appService.validApp(app, true);

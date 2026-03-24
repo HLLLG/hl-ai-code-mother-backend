@@ -1,7 +1,10 @@
 package com.hl.hlaicodemother.service.impl;
 
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.constant.UserConstant;
 import com.hl.hlaicodemother.core.AiCodeGeneratorFacade;
 import com.hl.hlaicodemother.exception.BusinessException;
@@ -23,10 +26,9 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.io.File;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -59,6 +61,44 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(codeGenTypeEnum == null, ErrorCode.PARAMS_ERROR, "应用的代码生成类型不合法");
         // 调用 AI 模型接口，生成代码
         return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+    }
+
+    @Override
+    public String deployApp(Long appId, User user) {
+        // 校验参数
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
+        ThrowUtils.throwIf(user == null, ErrorCode.NOT_LOGIN_ERROR);
+        // 检查应用是否存在, 且只有本人可以部署应用
+        App app = getById(appId);
+        checkAppOwner(app, user);
+        // 检查生成的deployKey是否已存在，避免重复
+        String deployKey = app.getDeployKey();
+        if (StrUtil.isBlank(deployKey)) {
+            // 生成deployKey，六位（数字+字母）
+            deployKey = RandomUtil.randomString(6);
+        }
+        // 获取应用生成类型
+        String codeGenType = app.getCodeGenType();
+        // 检查应用生成目录是否存在
+        String sourceDirName = codeGenType + "_" + appId;
+        String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
+        File sourceDir = new File(sourceDirPath);
+        if (!sourceDir.exists() ||  !sourceDir.isDirectory()) {
+            // 不存在则提示先生成代码
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用生成目录不存在，请先生成代码");
+        }
+        // 部署应用
+        String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;
+        FileUtil.copyContent(sourceDir, new File(deployDirPath), true);
+        // 更新应用的deployKey和部署时间
+        App updateApp = new App();
+        updateApp.setDeployKey(deployKey);
+        updateApp.setDeployedTime(LocalDateTime.now());
+        updateApp.setId(appId);
+        boolean updateResult = this.updateById(updateApp);
+        ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
+        // 返回部署访问地址
+        return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
     }
 
     @Override
@@ -120,14 +160,12 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 构建用户 id 到用户 VO 的映射
         Map<Long, UserVO> userVOMap = userList.stream().collect(Collectors.toMap(User::getId, userService::getUserVO));
         // 填充用户信息到应用 VO
-        return appList.stream()
-                .map(app -> {
-                    AppVO appVO = getAppVO(app);
-                    UserVO userVO = userVOMap.get(app.getUserId());
-                    appVO.setUser(userVO);
-                    return appVO;
-                })
-                .collect(Collectors.toList());
+        return appList.stream().map(app -> {
+            AppVO appVO = getAppVO(app);
+            UserVO userVO = userVOMap.get(app.getUserId());
+            appVO.setUser(userVO);
+            return appVO;
+        }).collect(Collectors.toList());
     }
 
     @Override
