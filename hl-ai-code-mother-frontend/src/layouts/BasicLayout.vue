@@ -7,7 +7,7 @@
     </ALayoutHeader>
 
     <ALayoutContent class="layout-content">
-      <div class="layout-container content-inner">
+      <div :class="['layout-container', 'content-inner', route.meta.fullWidth ? 'content-inner-wide' : '']">
         <RouterView />
       </div>
     </ALayoutContent>
@@ -20,13 +20,14 @@
 
 <script setup lang="ts">
 import { Layout } from 'ant-design-vue'
-import { RouterView } from 'vue-router'
+import { RouterView, useRoute } from 'vue-router'
 
 import GlobalFooter from '@/components/GlobalFooter.vue'
 import GlobalHeader from '@/components/GlobalHeader.vue'
 import { menuItems } from '@/config/menu'
 
 const { Header: ALayoutHeader, Content: ALayoutContent, Footer: ALayoutFooter } = Layout
+const route = useRoute()
 </script>
 
 <style scoped>
@@ -65,6 +66,10 @@ const { Header: ALayoutHeader, Content: ALayoutContent, Footer: ALayoutFooter } 
   width: min(1200px, calc(100% - 48px));
 }
 
+.content-inner-wide {
+  width: min(1440px, calc(100% - 48px));
+}
+
 .layout-footer {
   margin-top: auto;
   padding: 16px 24px 24px;
@@ -83,6 +88,10 @@ const { Header: ALayoutHeader, Content: ALayoutContent, Footer: ALayoutFooter } 
   .layout-container,
   .content-inner {
     width: min(1200px, calc(100% - 32px));
+  }
+
+  .content-inner-wide {
+    width: min(1440px, calc(100% - 32px));
   }
 
   .layout-footer {

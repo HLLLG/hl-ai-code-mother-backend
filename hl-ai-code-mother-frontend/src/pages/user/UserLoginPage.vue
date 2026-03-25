@@ -34,24 +34,44 @@
 <script lang="ts" setup>
 import { reactive } from 'vue'
 import { userLogin } from '@/api/userController.ts'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { userLoginStore } from '@/stores/loginUser.ts'
 import { message } from 'ant-design-vue'
 
 const router = useRouter()
+const route = useRoute()
 const loginUserStore = userLoginStore()
 
 const formState = reactive<API.UserLoginRequest>({
   userAccount: '',
   userPassword: '',
 })
-const handleSubmit = async (values: any) => {
+
+const getRedirectPath = () => {
+  const redirect = Array.isArray(route.query.redirect) ? route.query.redirect[0] : route.query.redirect
+  if (!redirect) {
+    return '/'
+  }
+
+  try {
+    const redirectUrl = new URL(redirect, window.location.origin)
+    if (redirectUrl.origin === window.location.origin) {
+      return `${redirectUrl.pathname}${redirectUrl.search}${redirectUrl.hash}`
+    }
+  } catch {
+    return redirect
+  }
+
+  return '/'
+}
+
+const handleSubmit = async (values: API.UserLoginRequest) => {
   const res = await userLogin(values)
   if (res.data.code === 0 && res.data.data) {
     await loginUserStore.fetchLoginUser()
     message.success('登录成功')
     router.push({
-      path: '/',
+      path: getRedirectPath(),
       replace: true,
     })
   } else {

@@ -6,12 +6,11 @@
 
 <script setup lang="ts">
 import BasicLayout from '@/layouts/BasicLayout.vue'
-import dayjs from 'dayjs'
-import 'dayjs/locale/zh-cn'
+import zhCN from 'ant-design-vue/es/locale/zh_CN'
 import { userLoginStore } from '@/stores/loginUser.ts'
 
 const loginUserStore = userLoginStore()
 loginUserStore.fetchLoginUser()
 
-const locale = dayjs.locale('zh-cn')
+const locale = zhCN
 </script>

@@ -20,6 +20,12 @@ export const menuItems: MenuItemConfig[] = [
     path: '/',
   },
   {
+    key: 'appManage',
+    icon: () => h(InfoCircleOutlined),
+    label: '应用管理',
+    path: '/admin/appManage',
+  },
+  {
     key: 'userManage',
     icon: () => h(InfoCircleOutlined),
     label: '用户管理',

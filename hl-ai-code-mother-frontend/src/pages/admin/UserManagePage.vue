@@ -41,6 +41,11 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { listUserVoByPage, userDelete } from '@/api/userController.ts'
 import { message } from 'ant-design-vue'
 
+type TablePage = {
+  current?: number
+  pageSize?: number
+}
+
 const columns = [
   {
     title: 'id',
@@ -97,9 +102,9 @@ const pagination = computed(() => {
 })
 
 // 表格变化处理
-const doTableChange = (page: any) => {
-  searchParams.pageNum = page.current
-  searchParams.pageSize = page.pageSize
+const doTableChange = (page: TablePage) => {
+  searchParams.pageNum = page.current ?? 1
+  searchParams.pageSize = page.pageSize ?? 10
   fetchData()
 }
 
