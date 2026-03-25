@@ -3,7 +3,7 @@
     <div class="header-brand">
       <div class="brand" @click="goHome">
         <img :src="logoUrl" alt="网站 Logo" class="brand-logo" />
-        <span class="brand-title">{{ title }}</span>
+        <span class="brand-title" style="color: #333333">{{ title }}</span>
       </div>
     </div>
 
@@ -88,9 +88,9 @@ const menuStyle: CSSProperties = {
   '--ant-menu-item-selected-color': '#ffffff',
   '--ant-menu-horizontal-item-selected-color': '#ffffff',
   '--ant-menu-horizontal-item-hover-color': '#ffffff',
-  '--ant-menu-item-active-bg': 'rgba(255, 255, 255, 0.12)',
-  '--ant-menu-item-hover-bg': 'rgba(255, 255, 255, 0.1)',
-  '--ant-menu-item-selected-bg': 'rgba(255, 255, 255, 0.18)',
+  '--ant-menu-item-active-bg': 'rgba(16, 42, 87, 0.44)',
+  '--ant-menu-item-hover-bg': 'rgba(18, 52, 110, 0.28)',
+  '--ant-menu-item-selected-bg': 'rgba(14, 39, 80, 0.72)',
   '--ant-menu-active-bar-height': '0px',
   '--ant-menu-active-bar-width': '0px',
   '--ant-menu-horizontal-line-height': '46px',
@@ -314,10 +314,10 @@ const doLogout = async () => {
 .header-menu :deep(.ant-menu-item:hover) {
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.14),
-    rgba(255, 255, 255, 0.06)
+    rgba(29, 78, 216, 0.32),
+    rgba(15, 23, 42, 0.42)
   ) !important;
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: rgba(147, 197, 253, 0.28);
   color: #ffffff !important;
   transform: translateY(-1px);
 }
@@ -325,17 +325,27 @@ const doLogout = async () => {
 .header-menu :deep(.ant-menu-item-selected) {
   background: linear-gradient(
     135deg,
-    rgba(255, 255, 255, 0.28),
-    rgba(255, 255, 255, 0.12)
+    rgba(17, 24, 39, 0.88),
+    rgba(29, 78, 216, 0.76)
   ) !important;
-  border-color: rgba(255, 255, 255, 0.26);
+  border-color: rgba(191, 219, 254, 0.34);
   color: #ffffff !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
     inset 0 -1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 24px rgba(7, 35, 88, 0.18);
+    0 12px 28px rgba(7, 35, 88, 0.28);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+}
+
+.header-menu :deep(.ant-menu-item-selected:hover) {
+  color: #ffffff !important;
+  border-color: rgba(219, 234, 254, 0.42);
+  background: linear-gradient(
+    135deg,
+    rgba(15, 23, 42, 0.92),
+    rgba(37, 99, 235, 0.82)
+  ) !important;
 }
 
 .header-menu :deep(.ant-menu-item .ant-menu-title-content) {

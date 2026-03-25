@@ -14,6 +14,9 @@ const router = createRouter({
       path: '/',
       name: '主页',
       component: HomePage,
+      meta: {
+        fullWidth: true,
+      },
     },
     {
       path: '/admin/userManage',

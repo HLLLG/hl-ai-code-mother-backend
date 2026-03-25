@@ -113,7 +113,6 @@
             v-else
             :src="previewUrl"
             class="preview-iframe"
-            frameborder="0"
             @load="onIframeLoad"
           ></iframe>
         </div>
@@ -397,8 +396,7 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
 const updatePreview = () => {
   if (appId.value) {
     const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
-    const newPreviewUrl = getStaticPreviewUrl(codeGenType, appId.value)
-    previewUrl.value = newPreviewUrl
+    previewUrl.value = getStaticPreviewUrl(codeGenType, appId.value)
     previewReady.value = true
   }
 }
@@ -496,157 +494,228 @@ onUnmounted(() => {
 
 <style scoped>
 #appChatPage {
-  height: 100vh;
   display: flex;
+  flex: 1;
+  min-height: 100%;
   flex-direction: column;
-  padding: 16px;
-  background: #fdfdfd;
+  gap: 16px;
+  padding: 8px;
+  color: var(--app-text-body);
 }
 
-/* 顶部栏 */
 .header-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  gap: 16px;
+  padding: 18px 22px;
+  border: 1px solid var(--app-card-border);
+  border-radius: var(--app-radius-xl);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.56));
+  box-shadow: var(--app-card-shadow);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
 }
 
 .header-left {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .app-name {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1a1a1a;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--app-text-title);
+  letter-spacing: 0.01em;
 }
 
 .header-right {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 /* 主要内容区域 */
 .main-content {
   flex: 1;
-  display: flex;
-  gap: 16px;
-  padding: 8px;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(380px, 1.05fr) minmax(480px, 1.35fr);
+  gap: 18px;
   overflow: hidden;
 }
 
 /* 左侧对话区域 */
 .chat-section {
-  flex: 2;
+  position: relative;
   display: flex;
   flex-direction: column;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-height: 0;
+  border: 1px solid var(--app-card-border);
+  border-radius: var(--app-radius-xl);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.64));
+  box-shadow: var(--app-card-shadow);
   overflow: hidden;
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+.chat-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), transparent 28%);
+  pointer-events: none;
 }
 
 .messages-container {
   flex: 1;
-  padding: 16px;
+  min-height: 0;
+  padding: 22px;
   overflow-y: auto;
   scroll-behavior: smooth;
 }
 
 .message-item {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.user-message,
+.ai-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
 }
 
 .user-message {
-  display: flex;
   justify-content: flex-end;
-  align-items: flex-start;
-  gap: 8px;
 }
 
 .ai-message {
-  display: flex;
   justify-content: flex-start;
-  align-items: flex-start;
-  gap: 8px;
 }
 
 .message-content {
-  max-width: 70%;
-  padding: 12px 16px;
-  border-radius: 12px;
-  line-height: 1.5;
+  max-width: min(78%, 760px);
+  padding: 14px 16px;
+  border-radius: 20px;
+  line-height: 1.7;
   word-wrap: break-word;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
 }
 
 .user-message .message-content {
-  background: #1890ff;
-  color: white;
+  background: linear-gradient(135deg, var(--app-primary), #4f8cff);
+  color: #ffffff;
+  border-bottom-right-radius: 8px;
 }
 
 .ai-message .message-content {
-  background: #f5f5f5;
-  color: #1a1a1a;
-  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--app-text-body);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-bottom-left-radius: 8px;
 }
 
 .message-avatar {
   flex-shrink: 0;
+  padding-top: 4px;
 }
 
 .loading-indicator {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #666;
+  color: var(--app-text-muted);
 }
 
 /* 输入区域 */
 .input-container {
-  padding: 16px;
-  background: white;
+  position: relative;
+  z-index: 1;
+  padding: 18px 22px 22px;
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(248, 250, 252, 0.92));
 }
 
 .input-wrapper {
   position: relative;
 }
 
-.input-wrapper .ant-input {
-  padding-right: 50px;
+.input-wrapper :deep(.ant-input),
+.input-wrapper :deep(.ant-input-affix-wrapper),
+.input-wrapper :deep(textarea.ant-input) {
+  border-radius: 20px;
+  border: 1px solid rgba(203, 213, 225, 0.88);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
+}
+
+.input-wrapper :deep(textarea.ant-input) {
+  padding: 18px 72px 18px 18px;
+  color: var(--app-text-body);
+}
+
+.input-wrapper :deep(.ant-input:focus),
+.input-wrapper :deep(.ant-input-focused) {
+  border-color: rgba(37, 99, 235, 0.5);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
 }
 
 .input-actions {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
+  right: 12px;
+  bottom: 12px;
+}
+
+.input-actions :deep(.ant-btn) {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 10px 26px rgba(37, 99, 235, 0.28);
 }
 
 /* 右侧预览区域 */
 .preview-section {
-  flex: 3;
+  position: relative;
   display: flex;
   flex-direction: column;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  min-height: 0;
+  border: 1px solid var(--app-card-border);
+  border-radius: var(--app-radius-xl);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.58));
+  box-shadow: var(--app-card-shadow);
+}
+
+.preview-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), transparent 28%);
+  pointer-events: none;
 }
 
 .preview-header {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px;
-  border-bottom: 1px solid #e8e8e8;
+  gap: 12px;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
 }
 
 .preview-header h3 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--app-text-title);
 }
 
 .preview-actions {
@@ -656,31 +725,39 @@ onUnmounted(() => {
 
 .preview-content {
   flex: 1;
+  min-height: 0;
   position: relative;
   overflow: hidden;
+  background:
+    radial-gradient(circle at top, rgba(59, 130, 246, 0.06), transparent 24%),
+    rgba(248, 250, 252, 0.72);
 }
 
-.preview-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #666;
-}
-
-.placeholder-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
-
+.preview-placeholder,
 .preview-loading {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #666;
+  color: var(--app-text-muted);
+}
+
+.preview-placeholder p,
+.preview-loading p {
+  font-size: 15px;
+}
+
+.placeholder-icon {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  margin-bottom: 18px;
+  border-radius: 28px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.14), rgba(14, 165, 233, 0.14));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  font-size: 38px;
 }
 
 .preview-loading p {
@@ -691,37 +768,85 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   border: none;
+  background: #ffffff;
 }
 
-/* 响应式设计 */
-@media (max-width: 1024px) {
+.header-right :deep(.ant-btn),
+.preview-actions :deep(.ant-btn) {
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.header-right :deep(.ant-btn-default) {
+  border-color: rgba(203, 213, 225, 0.88);
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.header-right :deep(.ant-btn-primary) {
+  border: none;
+  background: linear-gradient(135deg, var(--app-primary), var(--app-primary-strong));
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.26);
+}
+
+@media (max-width: 1280px) {
   .main-content {
-    flex-direction: column;
+    grid-template-columns: minmax(340px, 0.95fr) minmax(420px, 1.15fr);
+  }
+}
+
+@media (max-width: 1024px) {
+  #appChatPage {
+    padding: 4px;
+  }
+
+  .main-content {
+    grid-template-columns: 1fr;
+    overflow: visible;
   }
 
   .chat-section,
   .preview-section {
-    flex: none;
-    height: 50vh;
+    min-height: 480px;
   }
 }
 
 @media (max-width: 768px) {
+  #appChatPage {
+    gap: 12px;
+    padding: 0;
+  }
+
   .header-bar {
-    padding: 12px 16px;
+    padding: 16px;
+    border-radius: 22px;
   }
 
   .app-name {
-    font-size: 16px;
+    font-size: 22px;
+  }
+
+  .header-right {
+    width: 100%;
   }
 
   .main-content {
-    padding: 8px;
-    gap: 8px;
+    gap: 12px;
+  }
+
+  .messages-container,
+  .preview-header,
+  .input-container {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .messages-container {
+    padding-top: 16px;
+    padding-bottom: 16px;
   }
 
   .message-content {
-    max-width: 85%;
+    max-width: 88%;
   }
 }
 </style>

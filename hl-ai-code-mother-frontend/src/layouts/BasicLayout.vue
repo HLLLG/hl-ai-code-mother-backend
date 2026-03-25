@@ -7,12 +7,12 @@
     </ALayoutHeader>
 
     <ALayoutContent class="layout-content">
-      <div :class="['layout-container', 'content-inner', route.meta.fullWidth ? 'content-inner-wide' : '']">
+      <div class="content-inner">
         <RouterView />
       </div>
     </ALayoutContent>
 
-    <ALayoutFooter class="layout-footer">
+    <ALayoutFooter v-if="!route.meta.fullWidth" class="layout-footer">
       <GlobalFooter />
     </ALayoutFooter>
   </Layout>
@@ -33,7 +33,7 @@ const route = useRoute()
 <style scoped>
 .basic-layout {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: transparent;
 }
 
 .layout-header {
@@ -43,55 +43,42 @@ const route = useRoute()
   height: auto;
   line-height: normal;
   padding: 0;
-  background: linear-gradient(90deg, #bbb 0%, #888888 100%);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  background: transparent;
+  box-shadow: none;
 }
 
 .header-container {
   width: 100%;
-  padding: 8px 20px;
-}
-
-.layout-container {
-  width: min(1200px, calc(100% - 48px));
-  margin: 0 auto;
+  padding: 12px 20px 0;
 }
 
 .layout-content {
   flex: 1;
-  padding: 24px 0;
+  display: flex;
+  width: 100%;
+  padding: 24px 24px 28px;
 }
 
 .content-inner {
-  width: min(1200px, calc(100% - 48px));
-}
-
-.content-inner-wide {
-  width: min(1440px, calc(100% - 48px));
+  display: flex;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
 }
 
 .layout-footer {
   margin-top: auto;
   padding: 16px 24px 24px;
-  background: #f5f7fa;
+  background: transparent;
 }
 
 @media (max-width: 768px) {
   .layout-content {
-    padding: 16px 0;
+    padding: 16px 16px 20px;
   }
 
   .header-container {
-    padding: 8px 12px;
-  }
-
-  .layout-container,
-  .content-inner {
-    width: min(1200px, calc(100% - 32px));
-  }
-
-  .content-inner-wide {
-    width: min(1440px, calc(100% - 32px));
+    padding: 10px 12px 0;
   }
 
   .layout-footer {

@@ -146,3 +146,9 @@ onMounted(() => {
   fetchData()
 })
 </script>
+
+<style scoped>
+#user-manage-page {
+  width: 100%;
+}
+</style>
