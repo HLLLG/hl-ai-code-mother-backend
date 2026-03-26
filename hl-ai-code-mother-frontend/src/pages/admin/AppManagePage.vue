@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 
+import AppCover from '@/components/AppCover.vue'
 import UserInfo from '@/components/UserInfo.vue'
 import { deleteAppByAdmin, listAppVoByPageByAdmin, updateAppByAdmin } from '@/api/appController.ts'
 import { CODE_GEN_TYPE_OPTIONS, formatCodeGenType } from '@/utils/codeGenTypes.ts'
@@ -189,6 +190,22 @@ const doFeature = async (record: API.AppVO) => {
   }
 }
 
+const getFeatureButtonStyle = (featured: boolean) => {
+  if (featured) {
+    return {
+      borderColor: '#faad14',
+      color: '#d48806',
+      background: '#fffbe6',
+    }
+  }
+
+  return {
+    borderColor: '#722ed1',
+    background: '#722ed1',
+    boxShadow: '0 4px 10px rgba(114, 46, 209, 0.22)',
+  }
+}
+
 onMounted(() => {
   fetchData()
 })
@@ -236,16 +253,15 @@ onMounted(() => {
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'cover'">
-          <a-image
-            v-if="record.cover"
+          <AppCover
             :src="record.cover"
-            :width="72"
-            :height="48"
-            style="object-fit: cover"
+            :title="record.appName || '无封面'"
+            width="72px"
+            height="48px"
+            radius="8px"
+            padding="6px"
+            font-size="12px"
           />
-          <div v-else class="app-cover-placeholder">
-            <span>{{ record.appName || '无封面' }}</span>
-          </div>
         </template>
         <template v-else-if="column.dataIndex === 'initPrompt'">
           <span class="ellipsis-text" :title="record.initPrompt || '暂无初始提示词'">
@@ -303,10 +319,8 @@ onMounted(() => {
             <a-button
               :type="isFeaturedApp(record.priority) ? 'default' : 'primary'"
               size="small"
-              :class="[
-                'action-btn',
-                isFeaturedApp(record.priority) ? 'action-btn-unfeature' : 'action-btn-feature',
-              ]"
+              class="action-btn"
+              :style="getFeatureButtonStyle(isFeaturedApp(record.priority))"
               @click="doFeature(record)"
             >
               {{ isFeaturedApp(record.priority) ? '取消精选' : '精选' }}
@@ -328,23 +342,6 @@ onMounted(() => {
   row-gap: 12px;
 }
 
-.app-cover-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 72px;
-  height: 48px;
-  padding: 6px;
-  border-radius: 8px;
-  background:
-    linear-gradient(145deg, rgba(12, 24, 68, 0.88), rgba(73, 145, 255, 0.4)),
-    linear-gradient(135deg, #eff6ff, #e0f2fe);
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.4;
-  text-align: center;
-}
 
 .ellipsis-text {
   display: inline-block;
@@ -367,17 +364,5 @@ onMounted(() => {
 .action-btn-detail {
   border-color: #d9d9d9;
   color: rgba(0, 0, 0, 0.72);
-}
-
-.action-btn-feature {
-  border-color: #722ed1;
-  background: #722ed1;
-  box-shadow: 0 4px 10px rgba(114, 46, 209, 0.22);
-}
-
-.action-btn-unfeature {
-  border-color: #faad14;
-  color: #d48806;
-  background: #fffbe6;
 }
 </style>

@@ -26,11 +26,11 @@ public abstract class CodeFileSaverTemplate<T> {
      * 定义了保存代码文件的基本流程
      *
      */
-    public final File saveCode(T result, Long appId) {
+    public final File saveCode(T result, Long appId, int version) {
         // 1. 验证输入参数
         validateInput(result);
         // 2. 构建目录
-        String dirPath = buildUniqueDirPath(appId);
+        String dirPath = buildUniqueDirPath(appId, version);
         // 3. 保存代码文件
         saveFiles(result, dirPath);
         // 4. 返回目录文件对象
@@ -52,10 +52,10 @@ public abstract class CodeFileSaverTemplate<T> {
      * 构建唯一目录路劲：tmp/code_output/bizType_雪花ID
      * @return
      */
-    protected  String buildUniqueDirPath(Long appId) {
+    protected  String buildUniqueDirPath(Long appId, int version) {
         ThrowUtils.throwIf(appId == null, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
         String bizType = getCodeType().getValue();
-        String uniqueDirPath = StrUtil.format("{}_{}", bizType, appId);
+        String uniqueDirPath = StrUtil.format("{}_{}_v{}", bizType, appId, version);
         String dirPath = FILE_SAVE_ROOT_DIR + File.separator + uniqueDirPath;
         // 创建目录
         if (!new File(dirPath).exists()) {

@@ -30,6 +30,21 @@ declare namespace API {
     appName?: string
   }
 
+  type AppVersion = {
+    id?: number
+    appId?: number
+    version?: number
+    codeGenType?: string
+    initPrompt?: string
+    userPrompt?: string
+    versionRemark?: string
+    isCurrent?: number
+    createUserId?: number
+    createTime?: string
+    updateTime?: string
+    isDelete?: number
+  }
+
   type AppVO = {
     id?: number
     appName?: string
@@ -37,6 +52,9 @@ declare namespace API {
     initPrompt?: string
     codeGenType?: string
     deployKey?: string
+    currentVersion?: number
+    currentVersionId?: number
+    lastedVersion?: number
     deployedTime?: string
     priority?: number
     userId?: number
@@ -114,6 +132,10 @@ declare namespace API {
     id: number
   }
 
+  type getInfoParams = {
+    id: number
+  }
+
   type getUserByIdParams = {
     id: number
   }
@@ -133,6 +155,15 @@ declare namespace API {
     updateTime?: string
   }
 
+  type PageAppVersion = {
+    records?: AppVersion[]
+    pageNumber?: number
+    pageSize?: number
+    totalPage?: number
+    totalRow?: number
+    optimizeCountQuery?: boolean
+  }
+
   type PageAppVO = {
     records?: AppVO[]
     pageNumber?: number
@@ -142,6 +173,10 @@ declare namespace API {
     optimizeCountQuery?: boolean
   }
 
+  type pageParams = {
+    page: PageAppVersion
+  }
+
   type PageUserVO = {
     records?: UserVO[]
     pageNumber?: number
@@ -149,6 +184,10 @@ declare namespace API {
     totalPage?: number
     totalRow?: number
     optimizeCountQuery?: boolean
+  }
+
+  type removeParams = {
+    id: number
   }
 
   type ServerSentEventString = true

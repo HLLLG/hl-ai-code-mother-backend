@@ -15,10 +15,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import javax.crypto.KeyGenerator;
-
 /**
- * 应用 实体类。
+ * 应用版本表 实体类。
  *
  * @author <a href="https://github.com/HLLLG">程序员HL</a>
  */
@@ -26,8 +24,8 @@ import javax.crypto.KeyGenerator;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Table("app")
-public class App implements Serializable {
+@Table("app_version")
+public class AppVersion implements Serializable {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -39,74 +37,51 @@ public class App implements Serializable {
     private Long id;
 
     /**
-     * 应用名称
+     * 应用 id
      */
-    @Column("appName")
-    private String appName;
+    @Column("appId")
+    private Long appId;
 
     /**
-     * 应用封面
+     * 版本号，从 1 开始递增
      */
-    private String cover;
+    private Integer version;
 
     /**
-     * 应用初始化的 prompt
-     */
-    @Column("initPrompt")
-    private String initPrompt;
-
-    /**
-     * 代码生成类型（枚举）
+     * 代码生成类型（html / multi_file）
      */
     @Column("codeGenType")
     private String codeGenType;
 
     /**
-     * 当前版本号
+     * 应用初始 prompt 快照
      */
-    @Column("currentVersion")
-    private Integer currentVersion;
+    @Column("initPrompt")
+    private String initPrompt;
 
     /**
-     * 当前生效的版本记录 id
+     * 本次生成时用户输入的 prompt
      */
-    @Column("currentVersionId")
-    private Long currentVersionId;
+    @Column("userPrompt")
+    private String userPrompt;
 
     /**
-     * 最新版本号
+     * 版本备注
      */
-    @Column("lastedVersion")
-    private Integer lastedVersion;
+    @Column("versionRemark")
+    private String versionRemark;
 
     /**
-     * 部署标识
+     * 是否为当前生效版本：0-否 1-是
      */
-    @Column("deployKey")
-    private String deployKey;
+    @Column("isCurrent")
+    private Integer isCurrent;
 
     /**
-     * 部署时间
+     * 创建该版本的用户 id
      */
-    @Column("deployedTime")
-    private LocalDateTime deployedTime;
-
-    /**
-     * 优先级
-     */
-    private Integer priority;
-
-    /**
-     * 创建用户id
-     */
-    @Column("userId")
-    private Long userId;
-
-    /**
-     * 编辑时间
-     */
-    @Column("editTime")
-    private LocalDateTime editTime;
+    @Column("createUserId")
+    private Long createUserId;
 
     /**
      * 创建时间

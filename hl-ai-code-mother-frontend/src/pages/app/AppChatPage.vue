@@ -36,7 +36,7 @@
             </div>
             <div v-else class="ai-message">
               <div class="message-avatar">
-                <a-avatar :src="aiAvatar" />
+                <a-avatar :src="logo" />
               </div>
               <div class="message-content">
                 <MarkdownRenderer v-if="message.content" :content="message.content" />
@@ -109,12 +109,7 @@
             <a-spin size="large" />
             <p>正在生成网站...</p>
           </div>
-          <iframe
-            v-else
-            :src="previewUrl"
-            class="preview-iframe"
-            @load="onIframeLoad"
-          ></iframe>
+          <iframe v-else :src="previewUrl" class="preview-iframe"></iframe>
         </div>
       </div>
     </div>
@@ -138,7 +133,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, onUnmounted, computed } from 'vue'
+import { ref, onMounted, nextTick, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
@@ -152,7 +147,7 @@ import request from '@/request'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import AppDetailModal from '@/components/AppDetailModal.vue'
 import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
-import aiAvatar from '@/assets/aiAvatar.png'
+import logo from '@/assets/logo.png'
 import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
 
 import {
@@ -186,7 +181,6 @@ const hasInitialConversation = ref(false) // 标记是否已经进行过初始�
 
 // 预览相关
 const previewUrl = ref('')
-const previewReady = ref(false)
 
 // 部署相关
 const deploying = ref(false)
@@ -396,8 +390,7 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
 const updatePreview = () => {
   if (appId.value) {
     const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
-    previewUrl.value = getStaticPreviewUrl(codeGenType, appId.value)
-    previewReady.value = true
+    previewUrl.value = getStaticPreviewUrl(codeGenType, appId.value, appInfo.value?.currentVersion || '1')
   }
 }
 
@@ -450,11 +443,6 @@ const openDeployedSite = () => {
   }
 }
 
-// iframe加载完成
-const onIframeLoad = () => {
-  previewReady.value = true
-}
-
 // 编辑应用
 const editApp = () => {
   if (appInfo.value?.id) {
@@ -484,11 +472,6 @@ const deleteApp = async () => {
 // 页面加载时获取应用信息
 onMounted(() => {
   fetchAppInfo()
-})
-
-// 清理资源
-onUnmounted(() => {
-  // EventSource 会在组件卸载时自动清理
 })
 </script>
 

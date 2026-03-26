@@ -11,6 +11,7 @@ import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.exception.ThrowUtils;
 import com.hl.hlaicodemother.mapper.AppMapper;
+import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
 import com.hl.hlaicodemother.model.entity.User;
@@ -18,12 +19,16 @@ import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
 import com.hl.hlaicodemother.model.vo.AppVO;
 import com.hl.hlaicodemother.model.vo.UserVO;
 import com.hl.hlaicodemother.service.AppService;
+import com.hl.hlaicodemother.service.AppVersionService;
 import com.hl.hlaicodemother.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
@@ -43,7 +48,14 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private UserService userService;
 
     @Resource
+    @Lazy
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
+
+    @Resource
+    private AppVersionService appVersionService;
+
+    @Resource
+    private TransactionTemplate transactionTemplate;
 
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User user) {
@@ -60,7 +72,35 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
         ThrowUtils.throwIf(codeGenTypeEnum == null, ErrorCode.PARAMS_ERROR, "应用的代码生成类型不合法");
         // 调用 AI 模型接口，生成代码
-        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, app);
+    }
+
+    @Override
+    public Long addApp(AppAddRequest appAddRequest, User loginUser) {
+        // 构造入库对象
+        App app = new App();
+        BeanUtils.copyProperties(appAddRequest, app);
+        // 应用名称暂时设置为initPrompt的前12个字符，后续可以修改为用户输入
+        if (StrUtil.isBlank(app.getAppName())) {
+            app.setAppName(StrUtil.sub(appAddRequest.getInitPrompt(), 0, 12));
+        }
+        if (StrUtil.isBlank(app.getCodeGenType())) {
+            // 默认多文件生成
+            app.setCodeGenType(CodeGenTypeEnum.MULTI_FILE.getValue());
+        }
+        app.setCurrentVersion(1);
+        app.setPriority(AppConstant.DEFAULT_APP_PRIORITY);
+        app.setUserId(loginUser.getId());
+        // 校验应用是否合法
+        this.validApp(app, true);
+        // 开启事务
+        return transactionTemplate.execute(status -> {
+            boolean result = this.save(app);
+            ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用创建失败");
+            // 初始化版本信息
+            appVersionService.initVersion(appAddRequest, app.getId(), loginUser);
+            return app.getId();
+        });
     }
 
     @Override

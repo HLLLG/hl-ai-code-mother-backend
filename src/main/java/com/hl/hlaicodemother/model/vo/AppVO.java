@@ -1,5 +1,6 @@
 package com.hl.hlaicodemother.model.vo;
 
+import com.mybatisflex.annotation.Column;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -40,6 +41,21 @@ public class AppVO implements Serializable {
      * 部署标识
      */
     private String deployKey;
+
+    /**
+     * 当前版本号
+     */
+    private Integer currentVersion;
+
+    /**
+     * 当前生效的版本记录 id
+     */
+    private Long currentVersionId;
+
+    /**
+     * 最新版本号
+     */
+    private Integer lastedVersion;
 
     /**
      * 部署时间

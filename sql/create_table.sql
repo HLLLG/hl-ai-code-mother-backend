@@ -40,3 +40,41 @@ create table if not exists app
     INDEX idx_appName (appName),
     INDEX idx_userId (userId)
 ) comment '应用' collate = utf8mb4_unicode_ci;
+
+--  应用表增加“当前版本”信息
+alter table app
+    add column currentVersion int default 0 not null comment '当前版本号' after deployedTime,
+    add column currentVersionId bigint null comment '当前生效的版本记录 id' after currentVersion;
+
+create index idx_currentVersion on app(currentVersion);
+create index idx_currentVersionId on app(currentVersionId);
+
+--  新增应用版本表：保存每次生成出来的历史版本
+create table if not exists app_version
+(
+    id                 bigint auto_increment comment 'id' primary key,
+    appId              bigint                                not null comment '应用 id',
+    version            int          default 1                not null comment '版本号，从 1 开始递增',
+    codeGenType        varchar(64)                           not null comment '代码生成类型（html / multi_file）',
+    initPrompt         text                                  null comment '应用初始 prompt 快照',
+    userPrompt         text                                  null comment '本次生成时用户输入的 prompt',
+    versionRemark      varchar(512)                          null comment '版本备注',
+    isCurrent          tinyint      default 0                not null comment '是否为当前生效版本：0-否 1-是',
+    createUserId       bigint                                not null comment '创建该版本的用户 id',
+    createTime         datetime     default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime         datetime     default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete           tinyint      default 0                not null comment '是否删除',
+
+    unique key uk_appId_versionNumber (appId, version),
+    index idx_appId (appId),
+    index idx_current (appId, isCurrent),
+    index idx_createUserId (createUserId)
+) comment '应用版本表' collate = utf8mb4_unicode_ci;
+
+alter table app drop column lastedVersion;
+
+
+alter table app
+    add column lastedVersion int default 1 not null comment '最新版本号' after currentVersion;
+
+

@@ -45,17 +45,3 @@ export const formatCodeGenType = (type: string | undefined): string => {
   return config ? config.label : type
 }
 
-/**
- * 获取所有代码生成类型
- */
-export const getAllCodeGenTypes = () => {
-  return Object.values(CodeGenTypeEnum)
-}
-
-/**
- * 检查是否为有效的代码生成类型
- * @param type 待检查的类型
- */
-export const isValidCodeGenType = (type: string): type is CodeGenTypeEnum => {
-  return Object.values(CodeGenTypeEnum).includes(type as CodeGenTypeEnum)
-}

@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '@/request'
+import { getDeployUrl, getStaticPreviewUrl } from '@/config/env'
 
 export const FEATURED_APP_PRIORITY = 99
 export const HOME_APP_PAGE_SIZE = 6
@@ -9,7 +9,17 @@ export const getAppStaticPreviewUrl = (app?: Pick<API.AppVO, 'id' | 'codeGenType
     return ''
   }
 
-  return `${API_BASE_URL}/static/${app.codeGenType}_${app.id}/`
+  // 作品预览地址与后端 serveStaticResource 路由保持一致：/static/{codeGenType}_{appId}/...
+  return getStaticPreviewUrl(app.codeGenType, String(app.id))
+}
+
+export const getAppDeployPreviewUrl = (deployKey?: string) => {
+  if (!deployKey) {
+    return ''
+  }
+
+  // 部署地址与静态资源预览地址不同，这里严格走部署域名。
+  return getDeployUrl(deployKey)
 }
 
 export const formatDateTime = (dateTime?: string) => {
@@ -20,15 +30,6 @@ export const formatDateTime = (dateTime?: string) => {
   return dateTime.replace('T', ' ').slice(0, 19)
 }
 
-export const getAppStatusText = (app?: API.AppVO) => {
-  if (app?.deployKey) {
-    return '已部署'
-  }
-  if (app?.codeGenType) {
-    return '已生成'
-  }
-  return '生成中'
-}
 
 export const isFeaturedApp = (priority?: number) => {
   return (priority ?? 0) >= FEATURED_APP_PRIORITY

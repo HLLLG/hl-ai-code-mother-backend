@@ -19,6 +19,7 @@ import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
 import com.hl.hlaicodemother.model.vo.AppVO;
 import com.hl.hlaicodemother.service.AppService;
+import com.hl.hlaicodemother.service.AppVersionService;
 import com.hl.hlaicodemother.service.UserService;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -61,7 +62,7 @@ public class AppController {
      */
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,@RequestParam String message,
-                                                    HttpServletRequest request) {
+                                                       HttpServletRequest request) {
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "用户输入不能为空");
         // 获取登录用户
@@ -117,24 +118,9 @@ public class AppController {
         ThrowUtils.throwIf(appAddRequest == null, ErrorCode.PARAMS_ERROR);
         // 获取登录用户
         User loginUser = userService.getLoginUser(request);
-        // 构造入库对象
-        App app = new App();
-        BeanUtils.copyProperties(appAddRequest, app);
-        // 应用名称暂时设置为initPrompt的前12个字符，后续可以修改为用户输入
-        if (StrUtil.isBlank(app.getAppName())) {
-            app.setAppName(StrUtil.sub(appAddRequest.getInitPrompt(), 0, 12));
-        }
-        if (StrUtil.isBlank(app.getCodeGenType())) {
-            // 默认多文件生成
-            app.setCodeGenType(CodeGenTypeEnum.MULTI_FILE.getValue());
-        }
-        app.setPriority(AppConstant.DEFAULT_APP_PRIORITY);
-        app.setUserId(loginUser.getId());
-        // 校验应用是否合法
-        appService.validApp(app, true);
-        boolean result = appService.save(app);
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用创建失败");
-        return ResultUtils.success(app.getId());
+        // 调用服务层方法，创建应用
+        Long appId = appService.addApp(appAddRequest, loginUser);
+        return ResultUtils.success(appId);
     }
 
     /**

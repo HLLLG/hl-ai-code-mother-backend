@@ -4,9 +4,11 @@ import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 
 import { addApp, listGoodAppVoByPage, listMyAppVoByPage } from '@/api/appController.ts'
+import AppCard from '@/components/AppCard.vue'
+import AppPreviewModal from '@/components/AppPreviewModal.vue'
 import { userLoginStore } from '@/stores/loginUser.ts'
 import {
-  formatDateTime,
+  getAppStaticPreviewUrl,
   HOME_APP_PAGE_SIZE,
   isFeaturedApp,
   MAX_USER_APP_PAGE_SIZE,
@@ -24,6 +26,9 @@ const quickPrompts = [
 
 const createPrompt = ref('')
 const createLoading = ref(false)
+const previewVisible = ref(false)
+const currentPreviewApp = ref<API.AppVO>()
+const currentPreviewUrl = ref('')
 
 const isLogin = computed(() => !!loginUserStore.loginUser.id)
 
@@ -101,9 +106,6 @@ const handleCreateApp = async () => {
       message.success('应用创建成功，正在进入对话页')
       await router.push({
         path: `/app/chat/${res.data.data}`,
-        query: {
-          autoPrompt: prompt,
-        },
       })
       createPrompt.value = ''
     } else {
@@ -127,41 +129,43 @@ const goToLogin = () => {
   })
 }
 
-const goToChat = (appId?: number, view = false) => {
-  if (!appId) {
+const openAppConversation = (app?: API.AppVO) => {
+  if (!app?.id) {
     return
   }
+
+  // 已生成过内容的应用进入查看模式，避免再次触发首轮自动生成。
+  const shouldUseViewMode = Boolean(app.codeGenType || app.deployKey)
+
   router.push({
-    path: `/app/chat/${appId}`,
-    query: view ? { view: '1' } : undefined,
+    path: `/app/chat/${app.id}`,
+    query: shouldUseViewMode ? { view: '1' } : undefined,
   })
 }
 
-const goToMyAppChat = (app: API.AppVO, forceView = false) => {
-  if (!app.id) {
-    return
-  }
+const canViewConversation = (app?: API.AppVO) => {
+  const loginUserId = loginUserStore.loginUser.id
+  const ownerId = app?.userId ?? app?.user?.id
 
-  // 已生成过代码的作品进入查看模式，避免再次自动触发首轮生成
-  if (forceView || app.codeGenType || app.deployKey) {
-    router.push({
-      path: `/app/chat/${app.id}`,
-      query: {
-        view: '1',
-      },
-    })
-    return
-  }
-
-  router.push(`/app/chat/${app.id}`)
+  // 只有本人作品才展示“查看对话”按钮，避免查看他人作品时误入可对话入口。
+  return !!loginUserId && !!ownerId && loginUserId === ownerId
 }
 
-const goToPreview = (app: API.AppVO, isMine = false) => {
-  if (isMine) {
-    goToMyAppChat(app, true)
+const canPreviewApp = (app?: API.AppVO) => {
+  return !!getAppStaticPreviewUrl(app)
+}
+
+const openAppPreview = (app?: API.AppVO) => {
+  const previewUrl = getAppStaticPreviewUrl(app)
+  if (!app?.id || !previewUrl) {
+    message.warning('当前应用暂未生成可预览的作品')
     return
   }
-  goToChat(app.id, true)
+
+  // 在首页弹出作品预览层，直接展示静态资源页面。
+  currentPreviewApp.value = app
+  currentPreviewUrl.value = previewUrl
+  previewVisible.value = true
 }
 
 const handleMySearch = () => {
@@ -198,22 +202,13 @@ onMounted(() => {
   fetchMyApps()
 })
 
-const myTotalPages = computed(() => {
-  const pageSize = myQuery.pageSize ?? HOME_APP_PAGE_SIZE
-  return Math.max(1, Math.ceil(myTotal.value / pageSize))
-})
-
-const featuredTotalPages = computed(() => {
-  const pageSize = featuredQuery.pageSize ?? HOME_APP_PAGE_SIZE
-  return Math.max(1, Math.ceil(featuredTotal.value / pageSize))
-})
 </script>
 
 <template>
   <div class="home-page">
     <section class="hero-section">
       <div class="hero-content">
-        <h1 style="color: rgba(0,255,255,0.57)">AI 应用生成平台</h1>
+        <h1 style="color: rgba(0,255,255,0.46)">AI 应用生成平台</h1>
         <p>
           一句话轻松创建网站应用
         </p>
@@ -223,7 +218,7 @@ const featuredTotalPages = computed(() => {
             v-model:value="createPrompt"
             class="prompt-textarea"
             :auto-size="{ minRows: 4, maxRows: 6 }"
-            placeholder="例如：使用 NoCode 创建一个信息管理系统"
+            placeholder="例如：帮我创建一个信息管理系统"
           />
           <div class="prompt-footer">
             <a-space wrap>
@@ -249,7 +244,6 @@ const featuredTotalPages = computed(() => {
         <div class="section-header">
           <div>
             <h2>我的作品</h2>
-            <p>支持按应用名称搜索、分页查看、继续编辑与删除自己的应用。</p>
           </div>
           <a-button v-if="!isLogin" type="primary" ghost @click="goToLogin">登录后查看</a-button>
         </div>
@@ -271,34 +265,16 @@ const featuredTotalPages = computed(() => {
             <a-empty v-if="!myApps.length" description="你还没有创建应用，先从上方输入需求开始吧" />
             <a-row v-else :gutter="[20, 20]">
               <a-col v-for="app in myApps" :key="app.id" :xs="24" :md="12" :xl="8">
-                <a-card class="app-card social-card" :bordered="false" hoverable>
-                  <div class="app-cover" @click="goToMyAppChat(app)">
-                    <img v-if="app.cover" :src="app.cover" alt="应用封面" />
-                    <div v-else class="app-cover-placeholder">
-                      <span>{{ app.appName || '未命名应用' }}</span>
-                    </div>
-                    <div class="cover-overlay">
-                      <a-button type="primary" size="large" class="preview-button" @click.stop="goToPreview(app, true)">
-                        预览
-                      </a-button>
-                    </div>
-                  </div>
-                  <div class="app-card-body social-card-body">
-                    <a-avatar class="author-avatar" :src="app.user?.userAvatar">
-                      {{ (app.user?.userName || loginUserStore.loginUser.userName || '我').slice(0, 1) }}
-                    </a-avatar>
-                    <div class="author-meta">
-                      <div class="author-title-row">
-                        <h3>{{ app.appName || '未命名应用' }}</h3>
-                        <a-tag v-if="isFeaturedApp(app.priority)" color="magenta">精选</a-tag>
-                      </div>
-                      <div class="author-subtitle">
-                        <span>{{ loginUserStore.loginUser.userName || app.user?.userName || '我' }}</span>
-                        <span>{{ formatDateTime(app.createTime) }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </a-card>
+                <AppCard
+                  :app="app"
+                  :featured="isFeaturedApp(app.priority)"
+                  :can-view-conversation="canViewConversation(app)"
+                  :can-preview="canPreviewApp(app)"
+                  :author-name="loginUserStore.loginUser.userName || app.user?.userName || '我'"
+                  :author-initial="app.user?.userName || loginUserStore.loginUser.userName || '我'"
+                  @conversation="openAppConversation"
+                  @preview="openAppPreview"
+                />
               </a-col>
             </a-row>
           </a-spin>
@@ -325,7 +301,6 @@ const featuredTotalPages = computed(() => {
         <div class="section-header">
           <div>
             <h2>精选案例</h2>
-            <p>精选应用支持按名称搜索和分页浏览，点击后可查看应用详情与网页效果。</p>
           </div>
         </div>
 
@@ -345,34 +320,17 @@ const featuredTotalPages = computed(() => {
           <a-empty v-if="!featuredApps.length" description="暂无精选案例" />
           <a-row v-else :gutter="[20, 20]">
             <a-col v-for="app in featuredApps" :key="app.id" :xs="24" :md="12" :xl="8">
-              <a-card class="app-card social-card" :bordered="false" hoverable>
-                <div class="app-cover" @click="goToChat(app.id)">
-                  <img v-if="app.cover" :src="app.cover" alt="应用封面" />
-                  <div v-else class="app-cover-placeholder featured">
-                    <span>{{ app.appName || '精选应用' }}</span>
-                  </div>
-                  <div class="cover-overlay">
-                    <a-button type="primary" size="large" class="preview-button" @click.stop="goToPreview(app)">
-                      预览
-                    </a-button>
-                  </div>
-                </div>
-                <div class="app-card-body social-card-body">
-                  <a-avatar class="author-avatar" :src="app.user?.userAvatar">
-                    {{ (app.user?.userName || 'N').slice(0, 1) }}
-                  </a-avatar>
-                  <div class="author-meta">
-                    <div class="author-title-row">
-                      <h3>{{ app.appName || '未命名应用' }}</h3>
-                      <a-tag color="magenta">精选</a-tag>
-                    </div>
-                    <div class="author-subtitle">
-                      <span>{{ app.user?.userName || 'NoCode 官方' }}</span>
-                      <span>{{ formatDateTime(app.createTime) }}</span>
-                    </div>
-                  </div>
-                </div>
-              </a-card>
+              <AppCard
+                :app="app"
+                featured
+                :can-view-conversation="canViewConversation(app)"
+                :can-preview="canPreviewApp(app)"
+                :author-name="app.user?.userName || 'NoCode 官方'"
+                :author-initial="app.user?.userName || 'N'"
+                :cover-title="app.appName || '精选应用'"
+                @conversation="openAppConversation"
+                @preview="openAppPreview"
+              />
             </a-col>
           </a-row>
         </a-spin>
@@ -390,6 +348,12 @@ const featuredTotalPages = computed(() => {
         </div>
       </div>
     </section>
+
+    <AppPreviewModal
+      v-model:open="previewVisible"
+      :app="currentPreviewApp"
+      :preview-url="currentPreviewUrl"
+    />
   </div>
 </template>
 
@@ -506,146 +470,9 @@ const featuredTotalPages = computed(() => {
   margin-bottom: 20px;
 }
 
-.app-card {
-  overflow: hidden;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.06);
-}
-
-.app-card :deep(.ant-card-body) {
-  padding: 16px 18px 18px;
-}
-
-.app-cover {
-  position: relative;
-  overflow: hidden;
-  height: 220px;
-  border-radius: 18px;
-  background: #f3f6fb;
-  cursor: pointer;
-}
-
-.app-cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.3s ease;
-}
-
-.app-card:hover .app-cover img {
-  transform: scale(1.03);
-}
-
-.cover-overlay {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(15, 23, 42, 0.32);
-  opacity: 0;
-  transition: opacity 0.25s ease;
-}
-
-.app-card:hover .cover-overlay {
-  opacity: 1;
-}
-
-.preview-button {
-  min-width: 132px;
-  height: 44px;
-  border: none;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.96);
-  color: #111827;
-  font-weight: 600;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.15);
-}
-
-.preview-button:hover,
-.preview-button:focus {
-  background: #ffffff;
-  color: #111827;
-}
-
-.app-cover-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  padding: 20px;
-  background:
-    linear-gradient(145deg, rgba(12, 24, 68, 0.88), rgba(73, 145, 255, 0.4)),
-    linear-gradient(135deg, #eff6ff, #e0f2fe);
-  color: #ffffff;
-  font-size: 28px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.app-cover-placeholder.featured {
-  background:
-    linear-gradient(145deg, rgba(65, 16, 125, 0.88), rgba(234, 88, 12, 0.45)),
-    linear-gradient(135deg, #fff7ed, #fae8ff);
-}
-
-.app-card-body.social-card-body {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding-top: 0;
-}
-
-.author-avatar {
-  flex-shrink: 0;
-  width: 48px;
-  height: 48px;
-  background: linear-gradient(135deg, #22c55e, #06b6d4);
-}
-
-.author-meta {
-  min-width: 0;
-  flex: 1;
-}
-
-.author-title-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.author-title-row h3 {
-  margin: 0;
-  overflow: hidden;
-  color: #111827;
-  font-size: 22px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.author-subtitle {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  color: rgba(17, 24, 39, 0.52);
-  font-size: 13px;
-}
-
 .pagination-wrap {
   margin-top: 24px;
   text-align: right;
-}
-
-.pagination-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  color: rgba(17, 24, 39, 0.58);
-  font-size: 13px;
 }
 
 @media (max-width: 768px) {
@@ -677,28 +504,5 @@ const featuredTotalPages = computed(() => {
     align-items: flex-start;
   }
 
-  .app-cover {
-    height: 180px;
-  }
-
-  .cover-overlay {
-    opacity: 1;
-    align-items: flex-end;
-    padding-bottom: 18px;
-    background: linear-gradient(180deg, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.38));
-  }
-
-  .app-card-body.social-card-body,
-  .author-title-row {
-    align-items: flex-start;
-  }
-
-  .author-title-row {
-    flex-direction: column;
-  }
-
-  .author-title-row h3 {
-    white-space: normal;
-  }
 }
 </style>

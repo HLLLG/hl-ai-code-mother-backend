@@ -88,29 +88,16 @@
 
       <!-- 应用信息展示 -->
       <a-card title="应用信息" style="margin-top: 24px">
-        <a-descriptions :column="2" bordered>
-          <a-descriptions-item label="应用ID">
-            {{ appInfo?.id }}
-          </a-descriptions-item>
-          <a-descriptions-item label="创建者">
-            <UserInfo :user="appInfo?.user" size="small" />
-          </a-descriptions-item>
-          <a-descriptions-item label="创建时间">
-            {{ formatTime(appInfo?.createTime) }}
-          </a-descriptions-item>
-          <a-descriptions-item label="更新时间">
-            {{ formatTime(appInfo?.updateTime) }}
-          </a-descriptions-item>
-          <a-descriptions-item label="部署时间">
-            {{ appInfo?.deployedTime ? formatTime(appInfo.deployedTime) : '未部署' }}
-          </a-descriptions-item>
-          <a-descriptions-item label="访问链接">
-            <a-button v-if="appInfo?.deployKey" type="link" @click="openPreview" size="small">
-              查看预览
-            </a-button>
-            <span v-else>未部署</span>
-          </a-descriptions-item>
-        </a-descriptions>
+        <AppInfoDescriptions
+          :app="appInfo"
+          :column="2"
+          bordered
+          show-id
+          show-update-time
+          show-deployed-time
+          show-preview-action
+          @preview="openPreview"
+        />
       </a-card>
     </div>
   </div>
@@ -122,8 +109,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { getAppVoById, updateApp, updateAppByAdmin } from '@/api/appController'
 import { formatCodeGenType } from '@/utils/codeGenTypes'
-import { formatTime } from '@/utils/time'
-import UserInfo from '@/components/UserInfo.vue'
+import AppInfoDescriptions from '@/components/AppInfoDescriptions.vue'
 import { getStaticPreviewUrl } from '@/config/env'
 import type { FormInstance } from 'ant-design-vue'
 import { userLoginStore } from '@/stores/loginUser.ts'
@@ -310,14 +296,5 @@ onMounted(() => {
   font-size: 12px;
   color: #999;
   margin-top: 4px;
-}
-
-:deep(.ant-card-head) {
-  background: #fafafa;
-}
-
-:deep(.ant-descriptions-item-label) {
-  background: #fafafa;
-  font-weight: 500;
 }
 </style>

@@ -1,5 +1,6 @@
 package com.hl.hlaicodemother.service;
 
+import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
 import com.hl.hlaicodemother.model.entity.User;
@@ -25,6 +26,15 @@ public interface AppService extends IService<App> {
      * @return
      */
     Flux<String> chatToGenCode(Long appId, String message, User user);
+
+    /**
+     * 创建应用
+     *
+     * @param appAddRequest
+     * @param loginUser
+     * @return
+     */
+    Long addApp(AppAddRequest appAddRequest, User loginUser);
 
     /**
      * 部署应用
