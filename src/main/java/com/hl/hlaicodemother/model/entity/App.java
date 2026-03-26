@@ -74,12 +74,6 @@ public class App implements Serializable {
     private Long currentVersionId;
 
     /**
-     * 最新版本号
-     */
-    @Column("lastedVersion")
-    private Integer lastedVersion;
-
-    /**
      * 部署标识
      */
     @Column("deployKey")

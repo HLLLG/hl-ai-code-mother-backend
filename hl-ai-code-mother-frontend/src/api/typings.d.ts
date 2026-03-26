@@ -54,7 +54,6 @@ declare namespace API {
     deployKey?: string
     currentVersion?: number
     currentVersionId?: number
-    lastedVersion?: number
     deployedTime?: string
     priority?: number
     userId?: number
@@ -73,6 +72,12 @@ declare namespace API {
     code?: number
     message?: string
     data?: boolean
+  }
+
+  type BaseResponseInteger = {
+    code?: number
+    message?: string
+    data?: number
   }
 
   type BaseResponseLoginUserVO = {
@@ -126,6 +131,10 @@ declare namespace API {
 
   type getAppByIdByAdminParams = {
     id: number
+  }
+
+  type getAppVersionCountParams = {
+    appId: number
   }
 
   type getAppVoByIdParams = {
@@ -194,6 +203,11 @@ declare namespace API {
 
   type serveStaticResourceParams = {
     deployKey: string
+  }
+
+  type updateAppVersionParams = {
+    appId: number
+    version: number
   }
 
   type User = {

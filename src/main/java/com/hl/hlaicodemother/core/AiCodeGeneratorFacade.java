@@ -8,18 +8,12 @@ import com.hl.hlaicodemother.core.parser.CodeParserExecutor;
 import com.hl.hlaicodemother.core.saver.CodeFileSaverExecutor;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
-import com.hl.hlaicodemother.exception.ThrowUtils;
 import com.hl.hlaicodemother.model.entity.App;
-import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
-import com.hl.hlaicodemother.service.AppService;
 import com.hl.hlaicodemother.service.AppVersionService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
@@ -36,11 +30,6 @@ public class AiCodeGeneratorFacade {
 
     @Resource
     private AppVersionService appVersionService;
-
-    @Resource
-    private AppService appService;
-    @Autowired
-    private TransactionTemplate transactionTemplate;
 
     /**
      * 统一入口，根据类型生成并保存代码
@@ -125,46 +114,9 @@ public class AiCodeGeneratorFacade {
             try {
                 String completeResult = codeBuilder.toString();
                 Object parserResult = CodeParserExecutor.executeParser(completeResult, codeGenType);
-                Integer currentVersion = app.getCurrentVersion();
-                int version = currentVersion;
-                Integer lastedVersion = app.getLastedVersion();
-                App updateApp = new App();
-                AppVersion newAppVersion = new AppVersion();
-                // 开启事务
-
-                // 若最新版本号不为1，则表示是增量生成，需要在原有版本基础上进行版本迭代
-                if (lastedVersion > 1) {
-                    transactionTemplate.execute(status -> {
-                        // 获取当前版本信息，进行版本迭代
-                        Long currentVersionId = app.getCurrentVersionId();
-                        AppVersion oldAppVersion = appVersionService.getById(currentVersionId);
-                        ThrowUtils.throwIf(oldAppVersion == null, ErrorCode.NOT_FOUND_ERROR, "当前版本信息不存在");
-                        BeanUtils.copyProperties(oldAppVersion, newAppVersion);
-                        newAppVersion.setId(null);
-                        newAppVersion.setUserPrompt(userMessage);
-                        newAppVersion.setVersion(currentVersion + 1);
-
-                        boolean appVersionResult = appVersionService.save(newAppVersion);
-                        ThrowUtils.throwIf(!appVersionResult, ErrorCode.OPERATION_ERROR, "保存版本信息失败");
-                        // 更新应用的当前版本信息
-                        updateApp.setId(app.getId());
-                        updateApp.setLastedVersion(lastedVersion + 1);
-                        updateApp.setCurrentVersion(currentVersion + 1);
-                        updateApp.setCurrentVersionId(newAppVersion.getId());
-                        return null;
-                    });
-                    version += 1;
-                } else {
-                    updateApp.setId(app.getId());
-                    updateApp.setLastedVersion(lastedVersion + 1);
-                }
-
-                boolean appResult = appService.updateById(updateApp);
-                ThrowUtils.throwIf(!appResult, ErrorCode.OPERATION_ERROR, "更新应用版本信息失败");
-
-
-                File saveDir = CodeFileSaverExecutor.executeSaver(parserResult, codeGenType, app.getId(),
-                        version);
+                // 记录版本信息，获取最新版本号
+                int version = appVersionService.addVersion(app, userMessage);
+                File saveDir = CodeFileSaverExecutor.executeSaver(parserResult, codeGenType, app.getId(), version);
                 log.info("保存成功，路径为：{}", saveDir.getAbsolutePath());
             } catch (Exception e) {
                 log.error("保存失败：{}", e.getMessage());

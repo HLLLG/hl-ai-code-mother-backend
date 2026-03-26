@@ -14,6 +14,7 @@ import com.hl.hlaicodemother.mapper.AppMapper;
 import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
+import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
 import com.hl.hlaicodemother.model.vo.AppVO;
@@ -51,12 +52,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Lazy
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
 
-    @Resource
-    private AppVersionService appVersionService;
-
-    @Resource
-    private TransactionTemplate transactionTemplate;
-
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User user) {
         // 校验参数
@@ -93,14 +88,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         app.setUserId(loginUser.getId());
         // 校验应用是否合法
         this.validApp(app, true);
-        // 开启事务
-        return transactionTemplate.execute(status -> {
-            boolean result = this.save(app);
-            ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用创建失败");
-            // 初始化版本信息
-            appVersionService.initVersion(appAddRequest, app.getId(), loginUser);
-            return app.getId();
-        });
+        boolean result = this.save(app);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用创建失败");
+        return app.getId();
     }
 
     @Override
@@ -120,7 +110,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 获取应用生成类型
         String codeGenType = app.getCodeGenType();
         // 检查应用生成目录是否存在
-        String sourceDirName = codeGenType + "_" + appId;
+        String sourceDirName = codeGenType + "_" + appId + "_v" + app.getCurrentVersion();
         String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
         File sourceDir = new File(sourceDirPath);
         if (!sourceDir.exists() ||  !sourceDir.isDirectory()) {
@@ -128,7 +118,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用生成目录不存在，请先生成代码");
         }
         // 部署应用
-        String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;
+        String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey + "_v" + app.getCurrentVersion();
         FileUtil.copyContent(sourceDir, new File(deployDirPath), true);
         // 更新应用的deployKey和部署时间
         App updateApp = new App();
@@ -138,7 +128,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
         // 返回部署访问地址
-        return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+        return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey + "_v" + app.getCurrentVersion());
     }
 
     @Override

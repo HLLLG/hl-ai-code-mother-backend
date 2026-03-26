@@ -1,8 +1,14 @@
 <template>
   <div id="user-register-page">
-    <h2 class="title">HL AI应用生成 - 用户注册</h2>
-    <h3 class="desc">不写一行代码，生成完整应用</h3>
-    <a-form :model="formState" name="register" autocomplete="off" @finish="handleSubmit">
+    <h1 class="title">HL AI应用生成 - 用户注册</h1>
+    <h2 class="desc">不写一行代码，生成完整应用</h2>
+    <a-form
+      :model="formState"
+      name="register"
+      autocomplete="off"
+      @finish="handleSubmit"
+      style="min-width: 480px"
+    >
       <a-form-item
         name="userAccount"
         :rules="[

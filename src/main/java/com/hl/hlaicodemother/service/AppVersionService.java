@@ -1,7 +1,6 @@
 package com.hl.hlaicodemother.service;
 
-import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
-import com.hl.hlaicodemother.model.entity.User;
+import com.hl.hlaicodemother.model.entity.App;
 import com.mybatisflex.core.service.IService;
 import com.hl.hlaicodemother.model.entity.AppVersion;
 
@@ -13,12 +12,11 @@ import com.hl.hlaicodemother.model.entity.AppVersion;
 public interface AppVersionService extends IService<AppVersion> {
 
     /**
-     * 初始化版本信息
+     * 添加版本信息
      *
-     * @param appAddRequest
-     * @param appId
+     * @param app     应用信息
+     * @param message 用户输入的消息
+     * @return
      */
-    void initVersion(AppAddRequest appAddRequest, Long appId, User user);
-
-    AppVersion getLatestVersion(Long appId);
+    int addVersion(App app, String message);
 }

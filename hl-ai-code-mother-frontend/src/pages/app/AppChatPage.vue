@@ -6,6 +6,15 @@
         <h1 class="app-name">{{ appInfo?.appName || '网站生成器' }}</h1>
       </div>
       <div class="header-right">
+        <a-select
+          v-model:value="selectedVersion"
+          class="version-select"
+          placeholder="版本选择"
+          :options="versionOptions"
+          :disabled="versionOptions.length === 0 || switchingVersion"
+          :loading="switchingVersion"
+          @change="handleVersionChange"
+        />
         <a-button type="default" @click="showAppDetail">
           <template #icon>
             <InfoCircleOutlined />
@@ -140,6 +149,8 @@ import {
   getAppVoById,
   deployApp as deployAppApi,
   deleteApp as deleteAppApi,
+  getAppVersionCount,
+  updateAppVersion,
 } from '@/api/appController'
 import { CodeGenTypeEnum } from '@/utils/codeGenTypes'
 import request from '@/request'
@@ -165,6 +176,10 @@ const loginUserStore = userLoginStore()
 // 应用信息
 const appInfo = ref<API.AppVO>()
 const appId = ref<string>()
+const versionCount = ref(0)
+const selectedVersion = ref<number>()
+const switchingVersion = ref(false)
+const pendingVersion = ref<number>()
 
 // 对话相关
 interface Message {
@@ -201,9 +216,43 @@ const isViewMode = computed(() => route.query.view === '1')
 // 应用详情相关
 const appDetailVisible = ref(false)
 
+const versionOptions = computed(() => {
+  return Array.from({ length: versionCount.value }, (_, index) => {
+    const version = index + 1
+    return {
+      label: `版本${version}`,
+      value: version,
+    }
+  })
+})
+
 // 显示应用详情
 const showAppDetail = () => {
   appDetailVisible.value = true
+}
+
+const syncVersionState = () => {
+  const currentVersion = Number(appInfo.value?.currentVersion) || 1
+  versionCount.value = Math.max(versionCount.value, currentVersion)
+  selectedVersion.value = pendingVersion.value ?? currentVersion
+}
+
+const fetchVersionCount = async () => {
+  if (!appId.value) {
+    return
+  }
+
+  try {
+    const res = await getAppVersionCount({
+      appId: appId.value,
+    })
+    if (res.data.code === 0) {
+      versionCount.value = Math.max(res.data.data ?? 0, 1)
+      syncVersionState()
+    }
+  } catch (error) {
+    console.error('获取版本数量失败：', error)
+  }
 }
 
 // 获取应用信息
@@ -221,6 +270,7 @@ const fetchAppInfo = async () => {
     const res = await getAppVoById({ id: id as unknown as number })
     if (res.data.code === 0 && res.data.data) {
       appInfo.value = res.data.data
+      syncVersionState()
 
       // 自动发送初始提示词（除非是查看模式或已经进行过初始对话）
       if (appInfo.value.initPrompt && !isViewMode.value && !hasInitialConversation.value) {
@@ -390,7 +440,11 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
 const updatePreview = () => {
   if (appId.value) {
     const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
-    previewUrl.value = getStaticPreviewUrl(codeGenType, appId.value, appInfo.value?.currentVersion || '1')
+    previewUrl.value = getStaticPreviewUrl(
+      codeGenType,
+      appId.value,
+      String(appInfo.value?.currentVersion || 1),
+    )
   }
 }
 
@@ -411,7 +465,7 @@ const deployApp = async () => {
   deploying.value = true
   try {
     const res = await deployAppApi({
-      appId: appId.value as unknown as number,
+      appId: appId.value,
     })
 
     if (res.data.code === 0 && res.data.data) {
@@ -469,9 +523,60 @@ const deleteApp = async () => {
   }
 }
 
+const handleVersionChange = async (version: number) => {
+  if (!appId.value || version === Number(appInfo.value?.currentVersion)) {
+    return
+  }
+
+  const previousVersion = Number(appInfo.value?.currentVersion) || selectedVersion.value || 1
+  pendingVersion.value = version
+  switchingVersion.value = true
+  try {
+    const res = await updateAppVersion({
+      appId: appId.value,
+      version,
+    })
+
+    if (res.data.code === 0) {
+      selectedVersion.value = version
+      if (appInfo.value) {
+        appInfo.value = {
+          ...appInfo.value,
+          currentVersion: version,
+        }
+      }
+      updatePreview()
+      await fetchAppInfo()
+      pendingVersion.value = undefined
+      selectedVersion.value = version
+      if (appInfo.value) {
+        appInfo.value = {
+          ...appInfo.value,
+          currentVersion: version,
+        }
+      }
+      updatePreview()
+      message.success(`已切换到版本${version}`)
+    } else {
+      pendingVersion.value = undefined
+      selectedVersion.value = previousVersion
+      message.error('切换版本失败：' + res.data.message)
+    }
+  } catch (error) {
+    console.error('切换版本失败：', error)
+    pendingVersion.value = undefined
+    selectedVersion.value = previousVersion
+    message.error('切换版本失败，请重试')
+  } finally {
+    switchingVersion.value = false
+  }
+}
+
 // 页面加载时获取应用信息
-onMounted(() => {
-  fetchAppInfo()
+onMounted(async () => {
+  await fetchAppInfo()
+  await fetchVersionCount()
+  updatePreview()
 })
 </script>
 
@@ -520,6 +625,7 @@ onMounted(() => {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 /* 主要内容区域 */
@@ -760,6 +866,16 @@ onMounted(() => {
   font-weight: 600;
 }
 
+.version-select {
+  min-width: 132px;
+}
+
+.header-right :deep(.ant-select-selector) {
+  border-radius: 999px !important;
+  border-color: rgba(203, 213, 225, 0.88) !important;
+  background: rgba(255, 255, 255, 0.8) !important;
+}
+
 .header-right :deep(.ant-btn-default) {
   border-color: rgba(203, 213, 225, 0.88);
   background: rgba(255, 255, 255, 0.74);
@@ -809,6 +925,10 @@ onMounted(() => {
   }
 
   .header-right {
+    width: 100%;
+  }
+
+  .version-select {
     width: 100%;
   }
 

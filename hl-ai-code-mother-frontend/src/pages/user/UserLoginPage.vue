@@ -1,8 +1,9 @@
 <template>
   <div id="user-login-page">
-    <h2 class="title">HL AI应用生成 - 用户登录</h2>
-    <h3 class="desc">不写一行代码，生成完整应用</h3>
-    <a-form :model="formState" name="basic" autocomplete="off" @finish="handleSubmit">
+    <h1 class="title">HL AI应用生成 - 用户登录</h1>
+    <h2 class="desc">不写一行代码，生成完整应用</h2>
+    <a-form :model="formState" name="basic" autocomplete="off" @finish="handleSubmit"
+    style="min-width: 480px;">
       <a-form-item name="userAccount" :rules="[{ required: true, message: '请输入账号！' }]">
         <a-input v-model:value="formState.userAccount" placeholder="请输入账号" />
       </a-form-item>
@@ -82,7 +83,7 @@ const handleSubmit = async (values: API.UserLoginRequest) => {
 
 <style scoped>
 #user-login-page {
-  max-width: 480px;
+  max-width: 600px;
   margin: 0 auto;
 }
 
