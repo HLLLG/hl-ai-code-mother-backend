@@ -4,7 +4,6 @@
     :footer="null"
     :title="null"
     :width="1200"
-    centered
     wrapClassName="app-preview-modal-wrap"
     :body-style="{ padding: '0' }"
     :mask-style="{
@@ -34,6 +33,7 @@
           :src="previewUrl"
           class="preview-frame"
           title="应用作品预览"
+          style="min-height: 960px"
         />
         <div v-else class="preview-empty">
           当前应用还没有可预览的作品内容
@@ -85,26 +85,28 @@ const openDeployPage = () => {
 .preview-modal-shell {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
   overflow: hidden;
   background:
     radial-gradient(circle at top right, rgba(147, 197, 253, 0.2), transparent 26%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(248, 250, 252, 0.6));
-  padding: 28px;
+  padding: 20px;
   border-radius: 28px;
+  min-height: calc(100vh - 40px);
+  max-height: calc(100vh - 40px);
 }
 
 .preview-modal-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
 }
 
 .preview-meta {
   min-width: 0;
   flex: 1;
-  padding: 18px 22px;
+  padding: 14px 18px;
   border: 1px solid rgba(255, 255, 255, 0.42);
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.28);
@@ -114,9 +116,9 @@ const openDeployPage = () => {
 }
 
 .preview-meta h2 {
-  margin: 0 0 10px;
+  margin: 0 0 6px;
   color: #111827;
-  font-size: clamp(28px, 3.2vw, 40px);
+  font-size: clamp(22px, 2vw, 30px);
   font-weight: 700;
   line-height: 1.1;
 }
@@ -125,9 +127,9 @@ const openDeployPage = () => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: rgba(17, 24, 39, 0.68);
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .preview-time,
@@ -136,8 +138,8 @@ const openDeployPage = () => {
 }
 
 .deploy-button {
-  height: 48px;
-  padding: 0 22px;
+  height: 42px;
+  padding: 0 18px;
   border: 1px solid rgba(255, 255, 255, 0.48);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.38);
@@ -157,8 +159,8 @@ const openDeployPage = () => {
 .preview-frame-container {
   position: relative;
   flex: 1;
-  min-height: clamp(460px, 68vh, 620px);
-  height: min(78vh, 860px);
+  min-height: 0;
+  height: auto;
   overflow: hidden;
   border: 1px solid rgba(226, 232, 240, 0.88);
   border-radius: 24px;
@@ -189,8 +191,10 @@ const openDeployPage = () => {
 }
 
 :deep(.app-preview-modal-wrap .ant-modal) {
-  width: min(92vw, 1320px) !important;
-  max-width: 1320px;
+  width: min(96vw, 1680px) !important;
+  max-width: 1680px;
+  margin: 20px auto;
+  padding-bottom: 0;
 }
 
 :deep(.app-preview-modal-wrap .ant-modal-content) {
@@ -198,6 +202,11 @@ const openDeployPage = () => {
   border-radius: 32px;
   background: transparent;
   box-shadow: none;
+  max-height: calc(100vh - 40px);
+}
+
+:deep(.app-preview-modal-wrap .ant-modal-body) {
+  max-height: calc(100vh - 40px);
 }
 
 :deep(.app-preview-modal-wrap .ant-modal-close) {
@@ -215,8 +224,10 @@ const openDeployPage = () => {
 
 @media (max-width: 768px) {
   .preview-modal-shell {
-    gap: 16px;
-    padding: 16px;
+    gap: 12px;
+    padding: 12px;
+    min-height: calc(100vh - 16px);
+    max-height: calc(100vh - 16px);
   }
 
   .preview-modal-header {
@@ -224,22 +235,43 @@ const openDeployPage = () => {
     align-items: stretch;
   }
 
+  .preview-meta {
+    padding: 12px 14px;
+  }
+
   .preview-meta h2 {
-    font-size: 28px;
+    font-size: 22px;
+  }
+
+  .preview-meta-row {
+    font-size: 13px;
+    gap: 6px;
   }
 
   .deploy-button {
     align-self: flex-start;
+    height: 38px;
+    padding: 0 16px;
   }
 
   .preview-frame-container {
-    min-height: clamp(340px, 58vh, 460px);
-    height: 68vh;
+    min-height: 0;
+    height: auto;
   }
 
   .preview-frame,
   .preview-empty {
     height: 100%;
+  }
+
+  :deep(.app-preview-modal-wrap .ant-modal) {
+    width: calc(100vw - 16px) !important;
+    margin: 8px auto;
+  }
+
+  :deep(.app-preview-modal-wrap .ant-modal-content),
+  :deep(.app-preview-modal-wrap .ant-modal-body) {
+    max-height: calc(100vh - 16px);
   }
 }
 </style>

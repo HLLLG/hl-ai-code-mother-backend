@@ -86,6 +86,21 @@ export async function chatToGenCode(
   })
 }
 
+/** 此处后端没有提供注释 POST /app/chat/gen/code/stop */
+export async function stopChatToGenCode(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.stopChatToGenCodeParams,
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponseBoolean>('/app/chat/gen/code/stop', {
+    method: 'POST',
+    params: {
+      ...params,
+    },
+    ...(options || {}),
+  })
+}
+
 /** 此处后端没有提供注释 POST /app/delete */
 export async function deleteApp(body: API.DeleteRequest, options?: { [key: string]: any }) {
   return request<API.BaseResponseBoolean>('/app/delete', {

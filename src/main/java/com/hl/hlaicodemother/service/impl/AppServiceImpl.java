@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.constant.UserConstant;
 import com.hl.hlaicodemother.core.AiCodeGeneratorFacade;
@@ -14,27 +15,26 @@ import com.hl.hlaicodemother.mapper.AppMapper;
 import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
-import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
 import com.hl.hlaicodemother.model.vo.AppVO;
 import com.hl.hlaicodemother.model.vo.UserVO;
 import com.hl.hlaicodemother.service.AppService;
-import com.hl.hlaicodemother.service.AppVersionService;
 import com.hl.hlaicodemother.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -52,6 +52,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Lazy
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
 
+    @Resource
+    private AiGenerationTaskManager aiGenerationTaskManager;
+
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User user) {
         // 校验参数
@@ -67,7 +70,18 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
         ThrowUtils.throwIf(codeGenTypeEnum == null, ErrorCode.PARAMS_ERROR, "应用的代码生成类型不合法");
         // 调用 AI 模型接口，生成代码
-        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, app);
+        String taskKey = buildGenerationTaskKey(appId, user.getId());
+        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, app, taskKey);
+    }
+
+    @Override
+    public boolean stopChatToGenCode(Long appId, User user) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
+        ThrowUtils.throwIf(user == null, ErrorCode.NOT_LOGIN_ERROR);
+        App app = getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        checkAppOwner(app, user);
+        return aiGenerationTaskManager.cancelTask(buildGenerationTaskKey(appId, user.getId()));
     }
 
     @Override
@@ -215,6 +229,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "查询请求不能为空");
         }
         return QueryWrapper.create().eq("id", appQueryRequest.getId()).like("appName", appQueryRequest.getAppName()).like("cover", appQueryRequest.getCover()).like("initPrompt", appQueryRequest.getInitPrompt()).eq("codeGenType", appQueryRequest.getCodeGenType()).eq("deployKey", appQueryRequest.getDeployKey()).eq("priority", appQueryRequest.getPriority()).eq("userId", appQueryRequest.getUserId()).orderBy(appQueryRequest.getSortField(), "ascend".equals(appQueryRequest.getSortOrder()));
+    }
+
+    private String buildGenerationTaskKey(Long appId, Long userId) {
+        return userId + "_" + appId;
     }
 
 

@@ -95,6 +95,21 @@ public class AppController {
     }
 
     /**
+     * 手动停止 AI 生成代码
+     *
+     * @param appId 应用 id
+     * @param request 请求
+     * @return 是否已发送停止信号
+     */
+    @PostMapping("/chat/gen/code/stop")
+    public BaseResponse<Boolean> stopChatToGenCode(@RequestParam Long appId, HttpServletRequest request) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
+        User loginUser = userService.getLoginUser(request);
+        boolean stopped = appService.stopChatToGenCode(appId, loginUser);
+        return ResultUtils.success(stopped);
+    }
+
+    /**
      * 部署应用
      * @param appId
      * @param request

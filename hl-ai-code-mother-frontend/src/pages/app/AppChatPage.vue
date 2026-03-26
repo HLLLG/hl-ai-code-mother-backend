@@ -82,10 +82,21 @@
             />
             <div class="input-actions">
               <a-button
+                v-if="isGenerating"
+                danger
+                @click="stopGenerating"
+                :loading="isStopping"
+                :disabled="!isOwner"
+              >
+                <template #icon>
+                  <PauseCircleOutlined />
+                </template>
+              </a-button>
+              <a-button
                 type="primary"
                 @click="sendMessage"
                 :loading="isGenerating"
-                :disabled="!isOwner"
+                :disabled="!isOwner || isGenerating"
               >
                 <template #icon>
                   <SendOutlined />
@@ -142,14 +153,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import {
   getAppVoById,
   deployApp as deployAppApi,
   deleteApp as deleteAppApi,
   getAppVersionCount,
+  stopChatToGenCode,
   updateAppVersion,
 } from '@/api/appController'
 import { CodeGenTypeEnum } from '@/utils/codeGenTypes'
@@ -166,6 +178,7 @@ import {
   SendOutlined,
   ExportOutlined,
   InfoCircleOutlined,
+  PauseCircleOutlined,
 } from '@ant-design/icons-vue'
 import { userLoginStore } from '@/stores/loginUser.ts'
 
@@ -191,8 +204,12 @@ interface Message {
 const messages = ref<Message[]>([])
 const userInput = ref('')
 const isGenerating = ref(false)
+const isStopping = ref(false)
 const messagesContainer = ref<HTMLElement>()
 const hasInitialConversation = ref(false) // 标记是否已经进行过初始对话
+const activeEventSource = ref<EventSource | null>(null)
+const activeAiMessageIndex = ref<number | null>(null)
+const isManualStop = ref(false)
 
 // 预览相关
 const previewUrl = ref('')
@@ -267,7 +284,7 @@ const fetchAppInfo = async () => {
   appId.value = id
 
   try {
-    const res = await getAppVoById({ id: id as unknown as number })
+    const res = await getAppVoById({ id })
     if (res.data.code === 0 && res.data.data) {
       appInfo.value = res.data.data
       syncVersionState()
@@ -309,6 +326,7 @@ const sendInitialMessage = async (prompt: string) => {
 
   // 开始生成
   isGenerating.value = true
+  activeAiMessageIndex.value = aiMessageIndex
   await generateCode(prompt, aiMessageIndex)
 }
 
@@ -340,15 +358,92 @@ const sendMessage = async () => {
 
   // 开始生成
   isGenerating.value = true
+  activeAiMessageIndex.value = aiMessageIndex
   await generateCode(message, aiMessageIndex)
+}
+
+const cleanupActiveGeneration = () => {
+  activeEventSource.value?.close()
+  activeEventSource.value = null
+  activeAiMessageIndex.value = null
+  isGenerating.value = false
+  isStopping.value = false
+}
+
+const markAiMessageStopped = () => {
+  const index = activeAiMessageIndex.value
+  if (index === null || !messages.value[index]) {
+    return
+  }
+  const currentContent = messages.value[index].content?.trim()
+  messages.value[index].loading = false
+  if (!currentContent) {
+    messages.value[index].content = '本次生成已停止。'
+  }
+}
+
+const stopGenerating = async (shouldNotify = true) => {
+  if (!isGenerating.value || isStopping.value || !appId.value) {
+    return false
+  }
+
+  isStopping.value = true
+  isManualStop.value = true
+  try {
+    const res = await stopChatToGenCode({
+      appId: appId.value,
+    })
+    if (res.data.code !== 0) {
+      console.error('停止生成失败：', res.data.message)
+      isManualStop.value = false
+      isStopping.value = false
+      if (shouldNotify) {
+        message.error('停止生成失败：' + res.data.message)
+      }
+      return false
+    }
+    markAiMessageStopped()
+    cleanupActiveGeneration()
+    if (shouldNotify) {
+      message.success('已停止生成')
+    }
+    return true
+  } catch (error) {
+    console.error('停止生成失败：', error)
+    isManualStop.value = false
+    isStopping.value = false
+    if (shouldNotify) {
+      message.error('停止生成失败，请重试')
+    }
+    return false
+  }
 }
 
 // 生成代码 - 使用 EventSource 处理流式响应
 const generateCode = async (userMessage: string, aiMessageIndex: number) => {
-  let eventSource: EventSource | null = null
   let streamCompleted = false
 
+  const finalizeStream = (options?: { refreshApp?: boolean }) => {
+    activeEventSource.value?.close()
+    activeEventSource.value = null
+    activeAiMessageIndex.value = null
+    isGenerating.value = false
+    isStopping.value = false
+    const shouldRefreshApp = options?.refreshApp ?? false
+    const wasManualStop = isManualStop.value
+    isManualStop.value = false
+
+    if (shouldRefreshApp && !wasManualStop) {
+      setTimeout(async () => {
+        await fetchAppInfo()
+        updatePreview()
+      }, 1000)
+    }
+  }
+
   try {
+    activeEventSource.value?.close()
+
     // 获取 axios 配置的 baseURL
     const baseURL = request.defaults.baseURL || API_BASE_URL
 
@@ -361,15 +456,16 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
     const url = `${baseURL}/app/chat/gen/code?${params}`
 
     // 创建 EventSource 连接
-    eventSource = new EventSource(url, {
+    const eventSource = new EventSource(url, {
       withCredentials: true,
     })
+    activeEventSource.value = eventSource
 
     let fullContent = ''
 
     // 处理接收到的消息
     eventSource.onmessage = function (event) {
-      if (streamCompleted) return
+      if (streamCompleted || activeEventSource.value !== eventSource) return
 
       try {
         // 解析JSON包装的数据
@@ -391,32 +487,27 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
 
     // 处理done事件
     eventSource.addEventListener('done', function () {
-      if (streamCompleted) return
+      if (streamCompleted || activeEventSource.value !== eventSource) return
 
       streamCompleted = true
-      isGenerating.value = false
-      eventSource?.close()
-
-      // 延迟更新预览，确保后端已完成处理
-      setTimeout(async () => {
-        await fetchAppInfo()
-        updatePreview()
-      }, 1000)
+      messages.value[aiMessageIndex].loading = false
+      finalizeStream({ refreshApp: true })
     })
 
     // 处理错误
     eventSource.onerror = function () {
-      if (streamCompleted || !isGenerating.value) return
-      // 检查是否是正常的连接关闭
-      if (eventSource?.readyState === EventSource.CONNECTING) {
+      if (streamCompleted || activeEventSource.value !== eventSource) return
+      if (isManualStop.value) {
         streamCompleted = true
-        isGenerating.value = false
-        eventSource?.close()
-
-        setTimeout(async () => {
-          await fetchAppInfo()
-          updatePreview()
-        }, 1000)
+        markAiMessageStopped()
+        finalizeStream()
+        return
+      }
+      // 检查是否是正常的连接关闭
+      if (eventSource.readyState === EventSource.CONNECTING) {
+        streamCompleted = true
+        messages.value[aiMessageIndex].loading = false
+        finalizeStream({ refreshApp: true })
       } else {
         handleError(new Error('SSE连接错误'), aiMessageIndex)
       }
@@ -432,8 +523,9 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
   console.error('生成代码失败：', error)
   messages.value[aiMessageIndex].content = '抱歉，生成过程中出现了错误，请重试。'
   messages.value[aiMessageIndex].loading = false
+  cleanupActiveGeneration()
+  isManualStop.value = false
   message.error('生成失败，请重试')
-  isGenerating.value = false
 }
 
 // 更新预览
@@ -577,6 +669,16 @@ onMounted(async () => {
   await fetchAppInfo()
   await fetchVersionCount()
   updatePreview()
+})
+
+onBeforeRouteLeave(async () => {
+  if (isGenerating.value) {
+    await stopGenerating(false)
+  }
+})
+
+onBeforeUnmount(() => {
+  activeEventSource.value?.close()
 })
 </script>
 
@@ -759,6 +861,9 @@ onMounted(async () => {
   position: absolute;
   right: 12px;
   bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .input-actions :deep(.ant-btn) {
@@ -767,6 +872,12 @@ onMounted(async () => {
   border: none;
   border-radius: 14px;
   box-shadow: 0 10px 26px rgba(37, 99, 235, 0.28);
+}
+
+.input-actions :deep(.ant-btn-dangerous) {
+  background: rgba(255, 255, 255, 0.92);
+  color: #ef4444;
+  box-shadow: 0 10px 26px rgba(239, 68, 68, 0.16);
 }
 
 /* 右侧预览区域 */

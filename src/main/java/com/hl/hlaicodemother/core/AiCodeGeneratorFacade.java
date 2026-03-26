@@ -2,6 +2,7 @@ package com.hl.hlaicodemother.core;
 
 import cn.hutool.core.util.StrUtil;
 import com.hl.hlaicodemother.ai.AiCodeGeneratorService;
+import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.ai.model.HtmlCodeResult;
 import com.hl.hlaicodemother.ai.model.MultiFileCodeResult;
 import com.hl.hlaicodemother.core.parser.CodeParserExecutor;
@@ -30,6 +31,9 @@ public class AiCodeGeneratorFacade {
 
     @Resource
     private AppVersionService appVersionService;
+
+    @Resource
+    private AiGenerationTaskManager aiGenerationTaskManager;
 
     /**
      * 统一入口，根据类型生成并保存代码
@@ -71,7 +75,8 @@ public class AiCodeGeneratorFacade {
      * @param codeGenType
      * @return
      */
-    public Flux<String> generateAndSaveCodeStream(String userMessage, CodeGenTypeEnum codeGenType, App app) {
+    public Flux<String> generateAndSaveCodeStream(String userMessage, CodeGenTypeEnum codeGenType, App app,
+                                                  String taskKey) {
         // 校验参数
         if (StrUtil.isBlank(userMessage)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户输入不能为空");
@@ -79,21 +84,25 @@ public class AiCodeGeneratorFacade {
         if (codeGenType == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "代码生成类型不能为空");
         }
+        if (StrUtil.isBlank(taskKey)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "任务标识不能为空");
+        }
+        AiGenerationTaskManager.TaskContext taskContext = aiGenerationTaskManager.registerTask(taskKey);
         // 根据类型生成代码
         return switch (codeGenType) {
             case HTML -> {
-                // 调用 AI 生成 HTML 代码结果（流式）
-                Flux<String> htmlCodeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage);
-                yield processCodeStream(htmlCodeStream, CodeGenTypeEnum.HTML, app, userMessage);
+                Flux<String> htmlCodeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage)
+                        .takeUntilOther(taskContext.getCancelSignal());
+                yield processCodeStream(htmlCodeStream, CodeGenTypeEnum.HTML, app, userMessage, taskKey, taskContext);
             }
             case MULTI_FILE -> {
-                // 调用 AI 生成多文件代码结果（流式）
-                Flux<String> multiFileCodeStream = aiCodeGeneratorService.generateMultiFileStream(userMessage);
-                yield processCodeStream(multiFileCodeStream, CodeGenTypeEnum.MULTI_FILE, app, userMessage);
+                Flux<String> multiFileCodeStream = aiCodeGeneratorService.generateMultiFileStream(userMessage)
+                        .takeUntilOther(taskContext.getCancelSignal());
+                yield processCodeStream(multiFileCodeStream, CodeGenTypeEnum.MULTI_FILE, app, userMessage, taskKey,
+                        taskContext);
             }
-            default -> {
-                throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的代码生成类型: " + codeGenType.getValue());
-            }
+            default -> throw new BusinessException(ErrorCode.PARAMS_ERROR,
+                    "不支持的代码生成类型: " + codeGenType.getValue());
         };
     }
 
@@ -105,22 +114,23 @@ public class AiCodeGeneratorFacade {
      * @return
      */
     private Flux<String> processCodeStream(Flux<String> codeStream, CodeGenTypeEnum codeGenType, App app,
-                                           String userMessage) {
-        // 当流式返沪生成代码完成后，再保存代码
+                                           String userMessage, String taskKey,
+                                           AiGenerationTaskManager.TaskContext taskContext) {
         StringBuilder codeBuilder = new StringBuilder();
-        // 实时收集代码片段
         return codeStream.doOnNext(codeBuilder::append).doOnComplete(() -> {
-            // 流式生成完成后，保存代码到本地
+            if (taskContext.isCancelled()) {
+                log.info("生成已手动停止，跳过保存，taskKey={}", taskKey);
+                return;
+            }
             try {
                 String completeResult = codeBuilder.toString();
                 Object parserResult = CodeParserExecutor.executeParser(completeResult, codeGenType);
-                // 记录版本信息，获取最新版本号
                 int version = appVersionService.addVersion(app, userMessage);
                 File saveDir = CodeFileSaverExecutor.executeSaver(parserResult, codeGenType, app.getId(), version);
                 log.info("保存成功，路径为：{}", saveDir.getAbsolutePath());
             } catch (Exception e) {
-                log.error("保存失败：{}", e.getMessage());
+                log.error("保存失败", e);
             }
-        });
+        }).doFinally(signalType -> aiGenerationTaskManager.removeTask(taskKey, taskContext));
     }
 }

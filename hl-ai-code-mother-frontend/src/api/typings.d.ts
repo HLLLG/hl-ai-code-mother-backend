@@ -30,21 +30,6 @@ declare namespace API {
     appName?: string
   }
 
-  type AppVersion = {
-    id?: number
-    appId?: number
-    version?: number
-    codeGenType?: string
-    initPrompt?: string
-    userPrompt?: string
-    versionRemark?: string
-    isCurrent?: number
-    createUserId?: number
-    createTime?: string
-    updateTime?: string
-    isDelete?: number
-  }
-
   type AppVO = {
     id?: number
     appName?: string
@@ -126,7 +111,7 @@ declare namespace API {
   }
 
   type deployAppParams = {
-    appId: number
+    appId: string | number
   }
 
   type getAppByIdByAdminParams = {
@@ -134,15 +119,11 @@ declare namespace API {
   }
 
   type getAppVersionCountParams = {
-    appId: number
+    appId: string | number
   }
 
   type getAppVoByIdParams = {
-    id: number
-  }
-
-  type getInfoParams = {
-    id: number
+    id: string | number
   }
 
   type getUserByIdParams = {
@@ -164,15 +145,6 @@ declare namespace API {
     updateTime?: string
   }
 
-  type PageAppVersion = {
-    records?: AppVersion[]
-    pageNumber?: number
-    pageSize?: number
-    totalPage?: number
-    totalRow?: number
-    optimizeCountQuery?: boolean
-  }
-
   type PageAppVO = {
     records?: AppVO[]
     pageNumber?: number
@@ -180,10 +152,6 @@ declare namespace API {
     totalPage?: number
     totalRow?: number
     optimizeCountQuery?: boolean
-  }
-
-  type pageParams = {
-    page: PageAppVersion
   }
 
   type PageUserVO = {
@@ -195,18 +163,18 @@ declare namespace API {
     optimizeCountQuery?: boolean
   }
 
-  type removeParams = {
-    id: number
-  }
-
   type ServerSentEventString = true
 
   type serveStaticResourceParams = {
     deployKey: string
   }
 
+  type stopChatToGenCodeParams = {
+    appId: string | number
+  }
+
   type updateAppVersionParams = {
-    appId: number
+    appId: string | number
     version: number
   }
 
