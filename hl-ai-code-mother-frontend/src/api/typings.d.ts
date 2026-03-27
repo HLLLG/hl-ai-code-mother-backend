@@ -83,6 +83,12 @@ declare namespace API {
     data?: PageAppVO
   }
 
+  type BaseResponsePageChatHistory = {
+    code?: number
+    message?: string
+    data?: PageChatHistory
+  }
+
   type BaseResponsePageUserVO = {
     code?: number
     message?: string
@@ -101,6 +107,30 @@ declare namespace API {
     data?: User
   }
 
+  type ChatHistory = {
+    id?: number
+    message?: string
+    messageType?: string
+    appId?: number
+    userId?: number
+    createTime?: string
+    updateTime?: string
+    isDelete?: number
+  }
+
+  type ChatHistoryQueryRequest = {
+    pageNum?: number
+    pageSize?: number
+    sortField?: string
+    sortOrder?: string
+    id?: number
+    message?: string
+    messageType?: string
+    appId?: number
+    userId?: number
+    lastCreateTime?: string
+  }
+
   type chatToGenCodeParams = {
     appId: number
     message: string
@@ -111,7 +141,7 @@ declare namespace API {
   }
 
   type deployAppParams = {
-    appId: string | number
+    appId: number
   }
 
   type getAppByIdByAdminParams = {
@@ -119,11 +149,11 @@ declare namespace API {
   }
 
   type getAppVersionCountParams = {
-    appId: string | number
+    appId: number
   }
 
   type getAppVoByIdParams = {
-    id: string | number
+    id: number
   }
 
   type getUserByIdParams = {
@@ -132,6 +162,12 @@ declare namespace API {
 
   type getUserVOByIdParams = {
     id: number
+  }
+
+  type listChatHistoryParams = {
+    appId: number
+    pageSize?: number
+    lastCreatTime: string
   }
 
   type LoginUserVO = {
@@ -147,6 +183,15 @@ declare namespace API {
 
   type PageAppVO = {
     records?: AppVO[]
+    pageNumber?: number
+    pageSize?: number
+    totalPage?: number
+    totalRow?: number
+    optimizeCountQuery?: boolean
+  }
+
+  type PageChatHistory = {
+    records?: ChatHistory[]
     pageNumber?: number
     pageSize?: number
     totalPage?: number
@@ -170,11 +215,11 @@ declare namespace API {
   }
 
   type stopChatToGenCodeParams = {
-    appId: string | number
+    appId: number
   }
 
   type updateAppVersionParams = {
-    appId: string | number
+    appId: number
     version: number
   }
 

@@ -191,6 +191,5 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
                 .like("userName", userName)
                 .like("userProfile", userProfile)
                 .orderBy(sortField, "ascend".equals(sortOrder));
-
     }
 }

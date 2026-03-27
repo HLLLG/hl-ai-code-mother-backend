@@ -16,6 +16,7 @@ import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
 import com.hl.hlaicodemother.model.entity.User;
+import com.hl.hlaicodemother.model.enums.ChatHistoryMessageTypeEnum;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
 import com.hl.hlaicodemother.model.vo.AppVO;
 import com.hl.hlaicodemother.model.vo.UserVO;
@@ -24,12 +25,14 @@ import com.hl.hlaicodemother.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +46,7 @@ import java.util.stream.Collectors;
  * @author <a href="https://github.com/HLLLG">程序员HL</a>
  */
 @Service
+@Slf4j
 public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppService {
 
     @Resource
@@ -54,6 +58,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private AiGenerationTaskManager aiGenerationTaskManager;
+
+    @Resource
+    private ChatHistoryServiceImpl chatHistoryService;
 
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User user) {
@@ -69,9 +76,36 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         String codeGenType = app.getCodeGenType();
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
         ThrowUtils.throwIf(codeGenTypeEnum == null, ErrorCode.PARAMS_ERROR, "应用的代码生成类型不合法");
+        // 保存用户输入的对话消息
+        boolean result = chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue()
+                , user.getId());
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "保存用户对话消息失败");
         // 调用 AI 模型接口，生成代码
         String taskKey = buildGenerationTaskKey(appId, user.getId());
-        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, app, taskKey);
+        Flux<String> contentFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, app,
+                taskKey);
+        StringBuilder chunkBuilder = new StringBuilder();
+        return contentFlux
+                .map(chunk -> {
+                    // 收集AI响应内容
+                    chunkBuilder.append(chunk);
+                    return chunk;
+                })
+                .doOnComplete(() -> {
+                    // 生成完成后，保存 AI 回复的对话消息
+                    String aiResponse = chunkBuilder.toString();
+                    if (StrUtil.isNotBlank(aiResponse)) {
+                        chatHistoryService.addChatMessage(appId, aiResponse,
+                                ChatHistoryMessageTypeEnum.AI.getValue(), user.getId());
+                    }
+                })
+                .doOnError(e -> {
+                    log.error("AI 生成代码出错", e);
+                    // 生成过程中发生错误时，保存错误信息到对话历史
+                    String errorMessage = "AI 生成代码出错: " + e.getMessage();
+                    chatHistoryService.addChatMessage(appId, errorMessage,
+                            ChatHistoryMessageTypeEnum.AI.getValue(), user.getId());
+                });
     }
 
     @Override
@@ -127,12 +161,13 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         String sourceDirName = codeGenType + "_" + appId + "_v" + app.getCurrentVersion();
         String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
         File sourceDir = new File(sourceDirPath);
-        if (!sourceDir.exists() ||  !sourceDir.isDirectory()) {
+        if (!sourceDir.exists() || !sourceDir.isDirectory()) {
             // 不存在则提示先生成代码
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用生成目录不存在，请先生成代码");
         }
         // 部署应用
-        String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey + "_v" + app.getCurrentVersion();
+        String deployDirPath =
+                AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey + "_v" + app.getCurrentVersion();
         FileUtil.copyContent(sourceDir, new File(deployDirPath), true);
         // 更新应用的deployKey和部署时间
         App updateApp = new App();
@@ -210,6 +245,25 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             appVO.setUser(userVO);
             return appVO;
         }).collect(Collectors.toList());
+    }
+
+    @Override
+    public boolean removeById(Serializable id) {
+        if (id == null) {
+            return false;
+        }
+        // 删除应用的同时，删除相关的对话历史
+        boolean result = false;
+        try {
+            result = super.removeById(id);
+            if (result) {
+                chatHistoryService.remove(new QueryWrapper().eq("appId", id));
+            }
+        } catch (Exception e) {
+            // 删除过程中发生异常，记录日志但不抛出，以免影响用户体验
+            log.error("删除应用失败，id: " + id, e);
+        }
+        return result;
     }
 
     @Override
