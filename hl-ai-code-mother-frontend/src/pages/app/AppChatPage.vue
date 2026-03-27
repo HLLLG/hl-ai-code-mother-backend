@@ -36,7 +36,16 @@
       <div class="chat-section">
         <!-- 消息区域 -->
         <div class="messages-container" ref="messagesContainer">
-          <div v-for="(message, index) in messages" :key="index" class="message-item">
+          <div v-if="hasMoreHistory && messages.length > 0" class="load-more-wrapper">
+            <a-button type="link" :loading="loadingMoreHistory" @click="loadMoreHistory">
+              加载更多
+            </a-button>
+          </div>
+          <div v-else-if="loadingHistory && messages.length === 0" class="history-loading">
+            <a-spin size="small" />
+            <span>正在加载历史消息...</span>
+          </div>
+          <div v-for="(message, index) in messages" :key="message.id ?? index" class="message-item">
             <div v-if="message.type === 'user'" class="user-message">
               <div class="message-content">{{ message.content }}</div>
               <div class="message-avatar">
@@ -55,6 +64,9 @@
                 </div>
               </div>
             </div>
+          </div>
+          <div v-if="!loadingHistory && messages.length === 0" class="empty-history">
+            暂无对话消息，快来开始创作吧
           </div>
         </div>
 
@@ -125,7 +137,7 @@
             <div class="placeholder-icon">🌐</div>
             <p>网站文件生成完成后将在这里展示</p>
           </div>
-          <div v-else-if="isGenerating" class="preview-loading">
+          <div v-else-if="isGenerating && !previewUrl" class="preview-loading">
             <a-spin size="large" />
             <p>正在生成网站...</p>
           </div>
@@ -164,6 +176,7 @@ import {
   stopChatToGenCode,
   updateAppVersion,
 } from '@/api/appController'
+import { listChatHistory } from '@/api/chatHistoryController'
 import { CodeGenTypeEnum } from '@/utils/codeGenTypes'
 import request from '@/request'
 
@@ -185,6 +198,7 @@ import { userLoginStore } from '@/stores/loginUser.ts'
 const route = useRoute()
 const router = useRouter()
 const loginUserStore = userLoginStore()
+const CHAT_HISTORY_PAGE_SIZE = 10
 
 // 应用信息
 const appInfo = ref<API.AppVO>()
@@ -196,8 +210,10 @@ const pendingVersion = ref<number>()
 
 // 对话相关
 interface Message {
+  id?: number
   type: 'user' | 'ai'
   content: string
+  createTime?: string
   loading?: boolean
 }
 
@@ -206,10 +222,15 @@ const userInput = ref('')
 const isGenerating = ref(false)
 const isStopping = ref(false)
 const messagesContainer = ref<HTMLElement>()
-const hasInitialConversation = ref(false) // 标记是否已经进行过初始对话
+const hasInitialConversation = ref(false)
 const activeEventSource = ref<EventSource | null>(null)
 const activeAiMessageIndex = ref<number | null>(null)
 const isManualStop = ref(false)
+const loadingHistory = ref(false)
+const loadingMoreHistory = ref(false)
+const hasMoreHistory = ref(false)
+const historyMessageCount = ref(0)
+const oldestHistoryCursor = ref<string>()
 
 // 预览相关
 const previewUrl = ref('')
@@ -228,8 +249,6 @@ const isAdmin = computed(() => {
   return loginUserStore.loginUser.userRole === 'admin'
 })
 
-const isViewMode = computed(() => route.query.view === '1')
-
 // 应用详情相关
 const appDetailVisible = ref(false)
 
@@ -242,6 +261,26 @@ const versionOptions = computed(() => {
     }
   })
 })
+
+const normalizeCursor = (record?: API.ChatHistory) => {
+  return record?.createTime || record?.updateTime
+}
+
+const mapChatHistoryToMessage = (record: API.ChatHistory): Message => {
+  const normalizedType = record.messageType?.toLowerCase()
+  return {
+    id: record.id,
+    type: normalizedType === 'user' ? 'user' : 'ai',
+    content: record.message || '',
+    createTime: record.createTime,
+  }
+}
+
+const shouldShowPreview = () => {
+  const hasHistoryPreview = historyMessageCount.value >= 2
+  const hasGeneratedPreview = !!appInfo.value?.codeGenType && !!appInfo.value?.currentVersion
+  return !!appId.value && (hasHistoryPreview || hasGeneratedPreview)
+}
 
 // 显示应用详情
 const showAppDetail = () => {
@@ -272,13 +311,91 @@ const fetchVersionCount = async () => {
   }
 }
 
+const fetchChatHistory = async (cursor?: string) => {
+  if (!appId.value) {
+    return [] as API.ChatHistory[]
+  }
+
+  const res = await listChatHistory({
+    appId: appId.value,
+    pageSize: CHAT_HISTORY_PAGE_SIZE,
+    ...(cursor ? { lastCreatTime: cursor } : {}),
+  })
+
+  if (res.data.code !== 0) {
+    throw new Error(res.data.message || '获取对话历史失败')
+  }
+
+  return res.data.data?.records ?? []
+}
+
+const updateHistoryPagination = (records: API.ChatHistory[]) => {
+  hasMoreHistory.value = records.length >= CHAT_HISTORY_PAGE_SIZE
+  oldestHistoryCursor.value = normalizeCursor(records[0])
+}
+
+const loadInitialHistory = async () => {
+  loadingHistory.value = true
+  try {
+    const records = await fetchChatHistory()
+    const sortedRecords = [...records].sort((a, b) => {
+      return new Date(a.createTime || '').getTime() - new Date(b.createTime || '').getTime()
+    })
+    messages.value = sortedRecords.map(mapChatHistoryToMessage)
+    historyMessageCount.value = records.length
+    updateHistoryPagination(records)
+    hasInitialConversation.value = records.length > 0
+  } catch (error) {
+    console.error('加载历史消息失败：', error)
+    message.error('加载历史消息失败，请刷新重试')
+  } finally {
+    loadingHistory.value = false
+    await nextTick()
+    scrollToBottom()
+  }
+}
+
+const loadMoreHistory = async () => {
+  if (!hasMoreHistory.value || loadingMoreHistory.value || !oldestHistoryCursor.value) {
+    return
+  }
+
+  loadingMoreHistory.value = true
+  try {
+    const records = await fetchChatHistory(oldestHistoryCursor.value)
+    const sortedRecords = [...records].sort((a, b) => {
+      return new Date(a.createTime || '').getTime() - new Date(b.createTime || '').getTime()
+    })
+    const historyMessages = sortedRecords.map(mapChatHistoryToMessage)
+    const existingIds = new Set(messages.value.map((item) => item.id).filter(Boolean))
+    const dedupedHistory = historyMessages.filter((item) => !item.id || !existingIds.has(item.id))
+    messages.value = [...dedupedHistory, ...messages.value]
+    historyMessageCount.value += dedupedHistory.length
+    updateHistoryPagination(records)
+  } catch (error) {
+    console.error('加载更多历史消息失败：', error)
+    message.error('加载更多失败，请稍后重试')
+  } finally {
+    loadingMoreHistory.value = false
+  }
+}
+
+const maybeSendInitialMessage = async () => {
+  if (!isOwner.value || hasInitialConversation.value || !appInfo.value?.initPrompt) {
+    return
+  }
+
+  hasInitialConversation.value = true
+  await sendInitialMessage(appInfo.value.initPrompt)
+}
+
 // 获取应用信息
 const fetchAppInfo = async () => {
   const id = route.params.id as string
   if (!id) {
     message.error('应用ID不存在')
     router.push('/')
-    return
+    return false
   }
 
   appId.value = id
@@ -288,20 +405,16 @@ const fetchAppInfo = async () => {
     if (res.data.code === 0 && res.data.data) {
       appInfo.value = res.data.data
       syncVersionState()
-
-      // 自动发送初始提示词（除非是查看模式或已经进行过初始对话）
-      if (appInfo.value.initPrompt && !isViewMode.value && !hasInitialConversation.value) {
-        hasInitialConversation.value = true
-        await sendInitialMessage(appInfo.value.initPrompt)
-      }
-    } else {
-      message.error('获取应用信息失败')
-      router.push('/')
+      return true
     }
+    message.error('获取应用信息失败')
+    router.push('/')
+    return false
   } catch (error) {
     console.error('获取应用信息失败：', error)
     message.error('获取应用信息失败')
     router.push('/')
+    return false
   }
 }
 
@@ -336,16 +449,14 @@ const sendMessage = async () => {
     return
   }
 
-  const message = userInput.value.trim()
+  const currentMessage = userInput.value.trim()
   userInput.value = ''
 
-  // 添加用户消息
   messages.value.push({
     type: 'user',
-    content: message,
+    content: currentMessage,
   })
 
-  // 添加AI消息占位符
   const aiMessageIndex = messages.value.length
   messages.value.push({
     type: 'ai',
@@ -356,10 +467,9 @@ const sendMessage = async () => {
   await nextTick()
   scrollToBottom()
 
-  // 开始生成
   isGenerating.value = true
   activeAiMessageIndex.value = aiMessageIndex
-  await generateCode(message, aiMessageIndex)
+  await generateCode(currentMessage, aiMessageIndex)
 }
 
 const cleanupActiveGeneration = () => {
@@ -435,8 +545,12 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
 
     if (shouldRefreshApp && !wasManualStop) {
       setTimeout(async () => {
-        await fetchAppInfo()
-        updatePreview()
+        const fetched = await fetchAppInfo()
+        if (fetched) {
+          await fetchVersionCount()
+          await loadInitialHistory()
+          updatePreview()
+        }
       }, 1000)
     }
   }
@@ -530,24 +644,24 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
 
 // 更新预览
 const updatePreview = () => {
-  if (appId.value) {
+  if (appId.value && shouldShowPreview()) {
     const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
     previewUrl.value = getStaticPreviewUrl(
       codeGenType,
       appId.value,
       String(appInfo.value?.currentVersion || 1),
     )
+    return
   }
+  previewUrl.value = ''
 }
 
-// 滚动到底部
 const scrollToBottom = () => {
   if (messagesContainer.value) {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
   }
 }
 
-// 部署应用
 const deployApp = async () => {
   if (!appId.value) {
     message.error('应用ID不存在')
@@ -575,28 +689,24 @@ const deployApp = async () => {
   }
 }
 
-// 在新窗口打开预览
 const openInNewTab = () => {
   if (previewUrl.value) {
     window.open(previewUrl.value, '_blank')
   }
 }
 
-// 打开部署的网站
 const openDeployedSite = () => {
   if (deployUrl.value) {
     window.open(deployUrl.value, '_blank')
   }
 }
 
-// 编辑应用
 const editApp = () => {
   if (appInfo.value?.id) {
     router.push(`/app/edit/${appInfo.value.id}`)
   }
 }
 
-// 删除应用
 const deleteApp = async () => {
   if (!appInfo.value?.id) return
 
@@ -638,17 +748,19 @@ const handleVersionChange = async (version: number) => {
         }
       }
       updatePreview()
-      await fetchAppInfo()
-      pendingVersion.value = undefined
-      selectedVersion.value = version
-      if (appInfo.value) {
-        appInfo.value = {
-          ...appInfo.value,
-          currentVersion: version,
+      const fetched = await fetchAppInfo()
+      if (fetched) {
+        pendingVersion.value = undefined
+        selectedVersion.value = version
+        if (appInfo.value) {
+          appInfo.value = {
+            ...appInfo.value,
+            currentVersion: version,
+          }
         }
+        updatePreview()
+        message.success(`已切换到版本${version}`)
       }
-      updatePreview()
-      message.success(`已切换到版本${version}`)
     } else {
       pendingVersion.value = undefined
       selectedVersion.value = previousVersion
@@ -664,11 +776,15 @@ const handleVersionChange = async (version: number) => {
   }
 }
 
-// 页面加载时获取应用信息
 onMounted(async () => {
-  await fetchAppInfo()
+  const fetched = await fetchAppInfo()
+  if (!fetched) {
+    return
+  }
   await fetchVersionCount()
+  await loadInitialHistory()
   updatePreview()
+  await maybeSendInitialMessage()
 })
 
 onBeforeRouteLeave(async () => {
@@ -686,11 +802,13 @@ onBeforeUnmount(() => {
 #appChatPage {
   display: flex;
   flex: 1;
-  min-height: 100%;
+  min-height: 0;
+  height: 100%;
   flex-direction: column;
   gap: 16px;
   padding: 8px;
   color: var(--app-text-body);
+  overflow: hidden;
 }
 
 .header-bar {
@@ -734,6 +852,8 @@ onBeforeUnmount(() => {
 .main-content {
   flex: 1;
   min-height: 0;
+  height: clamp(620px, calc(100vh - 170px), 820px);
+  max-height: clamp(620px, calc(100vh - 170px), 820px);
   display: grid;
   grid-template-columns: minmax(380px, 1.05fr) minmax(480px, 1.35fr);
   gap: 18px;
@@ -746,6 +866,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
   border: 1px solid var(--app-card-border);
   border-radius: var(--app-radius-xl);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.64));
@@ -766,12 +888,32 @@ onBeforeUnmount(() => {
 .messages-container {
   flex: 1;
   min-height: 0;
+  max-height: 100%;
   padding: 22px;
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   scroll-behavior: smooth;
 }
 
+.load-more-wrapper,
+.history-loading,
+.empty-history {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  color: var(--app-text-muted);
+}
+
+.empty-history {
+  min-height: 100%;
+  margin-bottom: 0;
+}
+
 .message-item {
+  min-width: 0;
   margin-bottom: 16px;
 }
 
@@ -780,6 +922,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: flex-start;
   gap: 10px;
+  min-width: 0;
 }
 
 .user-message {
@@ -792,10 +935,13 @@ onBeforeUnmount(() => {
 
 .message-content {
   max-width: min(78%, 760px);
+  max-height: 640px;
   padding: 14px 16px;
   border-radius: 20px;
   line-height: 1.7;
-  word-wrap: break-word;
+  word-break: break-word;
+  overflow-x: auto;
+  overflow-y: auto;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
 }
 
@@ -886,10 +1032,13 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
   border: 1px solid var(--app-card-border);
   border-radius: var(--app-radius-xl);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.58));
   box-shadow: var(--app-card-shadow);
+  overflow: hidden;
 }
 
 .preview-section::before {
@@ -926,8 +1075,10 @@ onBeforeUnmount(() => {
 .preview-content {
   flex: 1;
   min-height: 0;
+  height: 0;
   position: relative;
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
   background:
     radial-gradient(circle at top, rgba(59, 130, 246, 0.06), transparent 24%),
     rgba(248, 250, 252, 0.72);
@@ -965,8 +1116,10 @@ onBeforeUnmount(() => {
 }
 
 .preview-iframe {
+  display: block;
   width: 100%;
   height: 100%;
+  min-height: 100%;
   border: none;
   background: #ffffff;
 }
@@ -1007,16 +1160,21 @@ onBeforeUnmount(() => {
 @media (max-width: 1024px) {
   #appChatPage {
     padding: 4px;
+    overflow: visible;
   }
 
   .main-content {
+    height: auto;
+    max-height: none;
     grid-template-columns: 1fr;
     overflow: visible;
   }
 
   .chat-section,
   .preview-section {
-    min-height: 480px;
+    height: clamp(420px, 68vh, 640px);
+    max-height: clamp(420px, 68vh, 640px);
+    min-height: 420px;
   }
 }
 
@@ -1047,20 +1205,16 @@ onBeforeUnmount(() => {
     gap: 12px;
   }
 
-  .messages-container,
-  .preview-header,
-  .input-container {
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-
-  .messages-container {
-    padding-top: 16px;
-    padding-bottom: 16px;
+  .chat-section,
+  .preview-section {
+    height: 62vh;
+    max-height: 62vh;
+    min-height: 380px;
   }
 
   .message-content {
     max-width: 88%;
+    max-height: 640px;
   }
 }
 </style>

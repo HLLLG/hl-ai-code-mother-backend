@@ -78,7 +78,7 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         ThrowUtils.throwIf(chatHistoryQueryRequest == null, ErrorCode.PARAMS_ERROR, "查询请求不能为空");
         QueryWrapper queryWrapper = QueryWrapper.create()
                 .eq("id", chatHistoryQueryRequest.getId())
-                .eq("app_id", chatHistoryQueryRequest.getAppId())
+                .eq("appId", chatHistoryQueryRequest.getAppId())
                 .like("message", chatHistoryQueryRequest.getMessage())
                 .eq("messageType", chatHistoryQueryRequest.getMessageType())
                 .eq("userId", chatHistoryQueryRequest.getUserId())

@@ -46,7 +46,7 @@ public class ChatHistoryController {
     @GetMapping("/app/{appId}")
     public BaseResponse<Page<ChatHistory>> listChatHistory(@PathVariable Long appId,
                                                            @RequestParam(defaultValue = "10")int pageSize,
-                                                           @RequestParam LocalDateTime lastCreatTime,
+                                                           @RequestParam(required = false) LocalDateTime lastCreatTime,
                                                            HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
         Page<ChatHistory> chatHistoryPage = chatHistoryService.listAppChatHistoryByPage(appId, pageSize, lastCreatTime, loginUser);

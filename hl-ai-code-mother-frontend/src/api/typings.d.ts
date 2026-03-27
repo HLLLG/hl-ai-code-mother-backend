@@ -132,7 +132,7 @@ declare namespace API {
   }
 
   type chatToGenCodeParams = {
-    appId: number
+    appId: string | number
     message: string
   }
 
@@ -141,19 +141,19 @@ declare namespace API {
   }
 
   type deployAppParams = {
-    appId: number
+    appId: string | number
   }
 
   type getAppByIdByAdminParams = {
-    id: number
+    id: string | number
   }
 
   type getAppVersionCountParams = {
-    appId: number
+    appId: string | number
   }
 
   type getAppVoByIdParams = {
-    id: number
+    id: string | number
   }
 
   type getUserByIdParams = {
@@ -165,9 +165,9 @@ declare namespace API {
   }
 
   type listChatHistoryParams = {
-    appId: number
+    appId: string | number
     pageSize?: number
-    lastCreatTime: string
+    lastCreatTime?: string
   }
 
   type LoginUserVO = {
@@ -215,11 +215,11 @@ declare namespace API {
   }
 
   type stopChatToGenCodeParams = {
-    appId: number
+    appId: string | number
   }
 
   type updateAppVersionParams = {
-    appId: number
+    appId: string | number
     version: number
   }
 

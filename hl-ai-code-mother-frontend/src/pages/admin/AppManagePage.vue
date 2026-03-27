@@ -146,12 +146,7 @@ const goToDetail = (id?: number) => {
   if (!id) {
     return
   }
-  router.push({
-    path: `/app/chat/${id}`,
-    query: {
-      view: '1',
-    },
-  })
+  router.push(`/app/chat/${id}`)
 }
 
 const doDelete = async (id?: number) => {
