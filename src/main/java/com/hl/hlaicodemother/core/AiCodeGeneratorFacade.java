@@ -1,6 +1,7 @@
 package com.hl.hlaicodemother.core;
 
 import cn.hutool.core.util.StrUtil;
+import com.hl.hlaicodemother.ai.AiCodeGeneratorService;
 import com.hl.hlaicodemother.ai.AiCodeGeneratorServiceFactory;
 import com.hl.hlaicodemother.ai.model.HtmlCodeResult;
 import com.hl.hlaicodemother.ai.model.MultiFileCodeResult;
@@ -38,10 +39,8 @@ public class AiCodeGeneratorFacade {
     private AppVersionService appVersionService;
 
     @Resource
-    private AppService appService;
+    private AiGenerationTaskManager aiGenerationTaskManager;
 
-    @Resource
-    private TransactionTemplate transactionTemplate;
 
     /**
      * 统一入口，根据类型生成并保存代码

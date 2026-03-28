@@ -3,11 +3,11 @@ package com.hl.hlaicodemother.ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.hl.hlaicodemother.config.MyRedisChatMemoryStore;
+import com.hl.hlaicodemother.service.ChatHistoryService;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.service.AiServices;
-import dev.langchain4j.service.spring.AiService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -30,6 +30,9 @@ public class AiCodeGeneratorServiceFactory {
     @Resource
     private MyRedisChatMemoryStore chatMemoryStore;
 
+    @Resource
+    private ChatHistoryService chatHistoryService;
+
 
     /**
      * AI 服务实例缓存
@@ -37,7 +40,7 @@ public class AiCodeGeneratorServiceFactory {
     private final Cache<Long, AiCodeGeneratorService> serviceCache = Caffeine.newBuilder()
             .maximumSize(1000)
             .expireAfterWrite(Duration.ofMinutes(30))
-            .refreshAfterWrite(Duration.ofMinutes(10))
+            .expireAfterAccess(Duration.ofMinutes(10))
             .removalListener((key, value, cause) ->
                     log.info("Ai 服务实例被移除，appId {}，原因： {}", key, cause))
             .build();
@@ -65,7 +68,9 @@ public class AiCodeGeneratorServiceFactory {
                 .id(appId)
                 .chatMemoryStore(chatMemoryStore)
                 .build();
-
+        // 从数据库加载最近的对话历史到内存中
+        chatHistoryService.loadChatHistoryToMemory(appId, 20, chatMemory);
+        // 构建 AI 服务实例
         return AiServices.builder(AiCodeGeneratorService.class)
                 .chatModel(chatModel)
                 .streamingChatModel(streamingChatModel)

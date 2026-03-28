@@ -12,13 +12,18 @@ import com.hl.hlaicodemother.service.UserService;
 import com.mybatisflex.core.paginate.Page;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.beans.factory.annotation.Autowired;
 import com.hl.hlaicodemother.model.entity.ChatHistory;
 import com.hl.hlaicodemother.service.ChatHistoryService;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
+import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.List;
 
 /**
  * 对话历史 控制层。
@@ -51,6 +56,25 @@ public class ChatHistoryController {
         User loginUser = userService.getLoginUser(request);
         Page<ChatHistory> chatHistoryPage = chatHistoryService.listAppChatHistoryByPage(appId, pageSize, lastCreatTime, loginUser);
         return ResultUtils.success(chatHistoryPage);
+    }
+
+    /**
+     * 导出并下载应用的对话历史 Markdown 文档。
+     * @param appId
+     * @param request
+     * @return
+     */
+    @GetMapping("/app/{appId}/export/md")
+    public ResponseEntity<org.springframework.core.io.Resource> downloadChatHistoryMd(@PathVariable Long appId, HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        File mdFile = chatHistoryService.exportChatHistoryToMd(appId, loginUser);
+        org.springframework.core.io.Resource resource = new FileSystemResource(mdFile);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(mdFile.getName(), StandardCharsets.UTF_8).build().toString())
+                .contentType(MediaType.parseMediaType("text/markdown; charset=UTF-8"))
+                .contentLength(mdFile.length())
+                .body(resource);
     }
 
     /**

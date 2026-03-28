@@ -21,11 +21,17 @@
           </template>
           应用详情
         </a-button>
+        <a-button type="default" @click="exportChatHistory" :loading="exportingChatHistory">
+          <template #icon>
+            <DownloadOutlined />
+          </template>
+          下载历史对话
+        </a-button>
         <a-button type="primary" @click="deployApp" :loading="deploying">
           <template #icon>
             <CloudUploadOutlined />
           </template>
-          部署按钮
+          部署
         </a-button>
       </div>
     </div>
@@ -141,7 +147,7 @@
             <a-spin size="large" />
             <p>正在生成网站...</p>
           </div>
-          <iframe v-else :src="previewUrl" class="preview-iframe"></iframe>
+          <iframe v-else-if="previewUrl" :src="previewUrl" class="preview-iframe"></iframe>
         </div>
       </div>
     </div>
@@ -167,6 +173,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import axios from 'axios'
 import { message } from 'ant-design-vue'
 import {
   getAppVoById,
@@ -176,7 +183,7 @@ import {
   stopChatToGenCode,
   updateAppVersion,
 } from '@/api/appController'
-import { listChatHistory } from '@/api/chatHistoryController'
+import { downloadChatHistoryMd, listChatHistory } from '@/api/chatHistoryController'
 import { CodeGenTypeEnum } from '@/utils/codeGenTypes'
 import request from '@/request'
 
@@ -188,6 +195,7 @@ import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
 
 import {
   CloudUploadOutlined,
+  DownloadOutlined,
   SendOutlined,
   ExportOutlined,
   InfoCircleOutlined,
@@ -237,6 +245,7 @@ const previewUrl = ref('')
 
 // 部署相关
 const deploying = ref(false)
+const exportingChatHistory = ref(false)
 const deployModalVisible = ref(false)
 const deployUrl = ref('')
 
@@ -659,6 +668,95 @@ const updatePreview = () => {
 const scrollToBottom = () => {
   if (messagesContainer.value) {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+  }
+}
+
+const getDefaultChatHistoryFileName = () => {
+  const safeAppName = appInfo.value?.appName?.trim()?.replace(/[\\/:*?"<>|]/g, '_')
+  return `${safeAppName || `chat-history-${appId.value || 'app'}`}.md`
+}
+
+const getFileNameFromContentDisposition = (contentDisposition?: string) => {
+  if (!contentDisposition) {
+    return ''
+  }
+
+  const utf8FileNameMatch = contentDisposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)
+  if (utf8FileNameMatch?.[1]) {
+    return decodeURIComponent(utf8FileNameMatch[1].trim().replace(/^"|"$/g, ''))
+  }
+
+  const normalFileNameMatch = contentDisposition.match(/filename\s*=\s*(?:"([^"]+)"|([^;]+))/i)
+  const rawFileName = normalFileNameMatch?.[1] || normalFileNameMatch?.[2]
+  return rawFileName?.trim() || ''
+}
+
+const getDownloadErrorMessage = async (error: unknown) => {
+  if (axios.isAxiosError(error)) {
+    const errorData = error.response?.data
+    if (errorData instanceof Blob) {
+      const errorText = (await errorData.text()).trim()
+      if (!errorText) {
+        return '下载历史对话失败，请重试'
+      }
+      try {
+        const parsed = JSON.parse(errorText)
+        return parsed.message || parsed.description || '下载历史对话失败，请重试'
+      } catch {
+        return errorText
+      }
+    }
+    return error.message || '下载历史对话失败，请重试'
+  }
+
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return '下载历史对话失败，请重试'
+}
+
+const exportChatHistory = async () => {
+  if (!appId.value) {
+    message.error('应用ID不存在')
+    return
+  }
+
+  if (exportingChatHistory.value) {
+    return
+  }
+
+  exportingChatHistory.value = true
+  let objectUrl = ''
+  let downloadLink: HTMLAnchorElement | null = null
+
+  try {
+    const res = await downloadChatHistoryMd({
+      appId: appId.value,
+    })
+
+    const blob = res.data instanceof Blob ? res.data : new Blob([res.data], { type: 'text/markdown' })
+    const contentDisposition = res.headers['content-disposition'] as string | undefined
+    const fileName = getFileNameFromContentDisposition(contentDisposition) || getDefaultChatHistoryFileName()
+
+    objectUrl = URL.createObjectURL(blob)
+    downloadLink = document.createElement('a')
+    downloadLink.href = objectUrl
+    downloadLink.download = fileName
+    downloadLink.style.display = 'none'
+    document.body.appendChild(downloadLink)
+    downloadLink.click()
+    message.success('历史对话下载成功')
+  } catch (error) {
+    console.error('下载历史对话失败：', error)
+    const errorMessage = await getDownloadErrorMessage(error)
+    message.error(`下载历史对话失败：${errorMessage}`)
+  } finally {
+    downloadLink?.remove()
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl)
+    }
+    exportingChatHistory.value = false
   }
 }
 

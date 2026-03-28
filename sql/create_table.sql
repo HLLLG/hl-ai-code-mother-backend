@@ -71,10 +71,6 @@ create table if not exists app_version
     index idx_createUserId (createUserId)
 ) comment '应用版本表' collate = utf8mb4_unicode_ci;
 
--- 增加部署标识
-alter table app_version
-    add column deployKey varchar(64) null comment '部署标识' after versionRemark;
-
 -- 对话历史表
 create table chat_history
 (

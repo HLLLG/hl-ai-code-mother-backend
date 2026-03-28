@@ -1,5 +1,7 @@
 package com.hl.hlaicodemother.constant;
 
+import java.io.File;
+
 /**
  * 应用常量
  *
@@ -25,6 +27,11 @@ public interface AppConstant {
      * 应用部署目录
      */
     String CODE_DEPLOY_ROOT_DIR = System.getProperty("user.dir") + "/tmp/code_deploy";
+
+    /**
+     * 对话历史 Markdown 导出目录
+     */
+    String CHAT_HISTORY_MD_DIR = System.getProperty("user.dir") + "/tmp/code_history";
 
     /**
      * 应用部署域名
