@@ -1,5 +1,6 @@
 package com.hl.hlaicodemother.core;
 
+import com.hl.hlaicodemother.model.entity.App;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
 import jakarta.annotation.Resource;
 import org.junit.jupiter.api.Assertions;

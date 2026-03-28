@@ -50,8 +50,5 @@ public class AppVersionServiceImpl extends ServiceImpl<AppVersionMapper, AppVers
         appService.updateById(app);
     }
 
-    @Override
-    public AppVersion getLatestVersion(Long appId) {
-        return null;
-    }
+
 }

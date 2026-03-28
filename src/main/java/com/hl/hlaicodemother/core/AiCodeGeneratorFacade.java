@@ -2,6 +2,7 @@ package com.hl.hlaicodemother.core;
 
 import cn.hutool.core.util.StrUtil;
 import com.hl.hlaicodemother.ai.AiCodeGeneratorService;
+import com.hl.hlaicodemother.ai.AiCodeGeneratorServiceFactory;
 import com.hl.hlaicodemother.ai.model.HtmlCodeResult;
 import com.hl.hlaicodemother.ai.model.MultiFileCodeResult;
 import com.hl.hlaicodemother.core.parser.CodeParserExecutor;
@@ -32,14 +33,15 @@ import java.io.File;
 public class AiCodeGeneratorFacade {
 
     @Resource
-    private AiCodeGeneratorService aiCodeGeneratorService;
+    private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
 
     @Resource
     private AppVersionService appVersionService;
 
     @Resource
     private AppService appService;
-    @Autowired
+
+    @Resource
     private TransactionTemplate transactionTemplate;
 
     /**
@@ -57,6 +59,7 @@ public class AiCodeGeneratorFacade {
         if (codeGenType == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "代码生成类型不能为空");
         }
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(app.getId());
         // 根据类型生成代码
         return switch (codeGenType) {
             case HTML -> {
@@ -90,6 +93,7 @@ public class AiCodeGeneratorFacade {
         if (codeGenType == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "代码生成类型不能为空");
         }
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(app.getId());
         // 根据类型生成代码
         return switch (codeGenType) {
             case HTML -> {

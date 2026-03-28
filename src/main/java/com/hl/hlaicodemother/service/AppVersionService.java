@@ -19,6 +19,4 @@ public interface AppVersionService extends IService<AppVersion> {
      * @param appId
      */
     void initVersion(AppAddRequest appAddRequest, Long appId, User user);
-
-    AppVersion getLatestVersion(Long appId);
 }

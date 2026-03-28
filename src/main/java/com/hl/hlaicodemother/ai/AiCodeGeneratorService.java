@@ -9,7 +9,7 @@ import reactor.core.publisher.Flux;
 /**
  * Ai Service接口，定义了生成HTML代码和生成多文件代码的方法。每个方法都使用了SystemMessage注解来指定系统提示信息的来源资源文件。
  */
-@AiService
+//@AiService
 public interface AiCodeGeneratorService {
 
     /**
