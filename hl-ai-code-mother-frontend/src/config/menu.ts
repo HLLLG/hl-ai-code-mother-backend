@@ -26,6 +26,12 @@ export const menuItems: MenuItemConfig[] = [
     path: '/admin/appManage',
   },
   {
+    key: 'chatHistoryManage',
+    icon: () => h(InfoCircleOutlined),
+    label: '对话管理',
+    path: '/admin/chatHistoryManage',
+  },
+  {
     key: 'userManage',
     icon: () => h(InfoCircleOutlined),
     label: '用户管理',

@@ -134,12 +134,8 @@ const openAppConversation = (app?: API.AppVO) => {
     return
   }
 
-  // 已生成过内容的应用进入查看模式，避免再次触发首轮自动生成。
-  const shouldUseViewMode = Boolean(app.codeGenType || app.deployKey)
-
   router.push({
     path: `/app/chat/${app.id}`,
-    query: shouldUseViewMode ? { view: '1' } : undefined,
   })
 }
 

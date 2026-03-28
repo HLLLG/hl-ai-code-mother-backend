@@ -46,9 +46,11 @@ const renderedMarkdown = computed(() => {
 
 <style scoped>
 .markdown-content {
+  max-width: 100%;
   line-height: 1.6;
   color: #333;
   word-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* 全局样式，影响 v-html 内容 */
@@ -102,34 +104,45 @@ const renderedMarkdown = computed(() => {
 }
 
 .markdown-content :deep(code) {
+  display: inline-block;
+  max-width: 100%;
   background-color: #f1f1f1;
   padding: 0.2em 0.4em;
   border-radius: 3px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
   font-size: 0.9em;
+  white-space: pre-wrap;
 }
 
 .markdown-content :deep(pre) {
+  max-width: 100%;
   background-color: #f8f8f8;
   border: 1px solid #e1e1e1;
   border-radius: 6px;
   padding: 1em;
   overflow-x: auto;
+  overflow-y: hidden;
   margin: 1em 0;
 }
 
 .markdown-content :deep(pre code) {
+  display: block;
+  min-width: max-content;
   background-color: transparent;
   padding: 0;
   border-radius: 0;
   font-size: 0.9em;
   line-height: 1.4;
+  white-space: pre;
 }
 
 .markdown-content :deep(table) {
+  display: block;
+  max-width: 100%;
   border-collapse: collapse;
   margin: 1em 0;
-  width: 100%;
+  overflow-x: auto;
+  width: max-content;
 }
 
 .markdown-content :deep(table th),

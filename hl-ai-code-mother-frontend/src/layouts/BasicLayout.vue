@@ -56,6 +56,8 @@ const route = useRoute()
   flex: 1;
   display: flex;
   width: 100%;
+  min-height: 0;
+  overflow: hidden;
   padding: 24px 24px 28px;
 }
 
@@ -64,6 +66,8 @@ const route = useRoute()
   flex: 1;
   width: 100%;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .layout-footer {
@@ -74,6 +78,7 @@ const route = useRoute()
 
 @media (max-width: 768px) {
   .layout-content {
+    min-height: 0;
     padding: 16px 16px 20px;
   }
 

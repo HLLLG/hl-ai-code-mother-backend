@@ -15,8 +15,8 @@ import com.hl.hlaicodemother.model.dto.app.AppAdminUpdateRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.dto.app.AppUpdateRequest;
 import com.hl.hlaicodemother.model.entity.App;
+import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.entity.User;
-import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
 import com.hl.hlaicodemother.model.vo.AppVO;
 import com.hl.hlaicodemother.service.AppService;
 import com.hl.hlaicodemother.service.AppVersionService;
@@ -52,6 +52,9 @@ public class AppController {
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private AppVersionService appVersionService;
 
     /**
      * 与AI模型对话，生成代码
@@ -90,6 +93,21 @@ public class AppController {
     }
 
     /**
+     * 手动停止 AI 生成代码
+     *
+     * @param appId 应用 id
+     * @param request 请求
+     * @return 是否已发送停止信号
+     */
+    @PostMapping("/chat/gen/code/stop")
+    public BaseResponse<Boolean> stopChatToGenCode(@RequestParam Long appId, HttpServletRequest request) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
+        User loginUser = userService.getLoginUser(request);
+        boolean stopped = appService.stopChatToGenCode(appId, loginUser);
+        return ResultUtils.success(stopped);
+    }
+
+    /**
      * 部署应用
      * @param appId
      * @param request
@@ -121,6 +139,30 @@ public class AppController {
         // 调用服务层方法，创建应用
         Long appId = appService.addApp(appAddRequest, loginUser);
         return ResultUtils.success(appId);
+    }
+
+    @PostMapping("/update/app/version")
+    public BaseResponse<Boolean> updateAppVersion(@RequestParam Long appId, @RequestParam Integer version) {
+        // 参数校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
+        ThrowUtils.throwIf(version == null || version <= 0, ErrorCode.PARAMS_ERROR, "版本号不合法");
+        // 获取应用
+        App app = appService.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 获取版本信息
+        AppVersion appVersion = appVersionService.getOne(new QueryWrapper()
+                .eq(AppVersion::getAppId, appId)
+                .eq(AppVersion::getVersion, version));
+        ThrowUtils.throwIf(appVersion == null, ErrorCode.NOT_FOUND_ERROR, "版本不存在");
+        // 更新版本号
+        App updateApp = new App();
+        updateApp.setId(appId);
+        updateApp.setCurrentVersion(version);
+        updateApp.setCurrentVersionId(appVersion.getId());
+        updateApp.setEditTime(LocalDateTime.now());
+        boolean result = appService.updateById(updateApp);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用版本更新失败");
+        return ResultUtils.success(result);
     }
 
     /**
@@ -172,6 +214,20 @@ public class AppController {
         boolean result = appService.removeById(deleteRequest.getId());
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用删除失败");
         return ResultUtils.success(result);
+    }
+
+
+    /**
+     * 获取应用版本数量
+     *
+     * @param appId 应用 id
+     * @return 版本数量
+     */
+    @GetMapping("/get/version/count")
+    public BaseResponse<Integer> getAppVersionCount(@RequestParam Long appId) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
+        int versionCount = (int) appVersionService.count(new QueryWrapper().eq(AppVersion::getAppId, appId));
+        return ResultUtils.success(versionCount);
     }
 
     /**
@@ -321,5 +377,4 @@ public class AppController {
         // 获取封装类（包含用户信息）
         return ResultUtils.success(appService.getAppVO(app));
     }
-
 }

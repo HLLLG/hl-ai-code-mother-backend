@@ -52,10 +52,6 @@ public class AppVO implements Serializable {
      */
     private Long currentVersionId;
 
-    /**
-     * 最新版本号
-     */
-    private Integer lastedVersion;
 
     /**
      * 部署时间

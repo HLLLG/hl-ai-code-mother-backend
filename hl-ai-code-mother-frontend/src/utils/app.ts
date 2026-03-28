@@ -4,13 +4,13 @@ export const FEATURED_APP_PRIORITY = 99
 export const HOME_APP_PAGE_SIZE = 6
 export const MAX_USER_APP_PAGE_SIZE = 20
 
-export const getAppStaticPreviewUrl = (app?: Pick<API.AppVO, 'id' | 'codeGenType'>) => {
+export const getAppStaticPreviewUrl = (app?: API.AppVO) => {
   if (!app?.id || !app.codeGenType) {
     return ''
   }
 
   // 作品预览地址与后端 serveStaticResource 路由保持一致：/static/{codeGenType}_{appId}/...
-  return getStaticPreviewUrl(app.codeGenType, String(app.id))
+  return getStaticPreviewUrl(app.codeGenType, String(app.id), app.currentVersion)
 }
 
 export const getAppDeployPreviewUrl = (deployKey?: string) => {
