@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 
 import { addApp, listGoodAppVoByPage, listMyAppVoByPage } from '@/api/appController.ts'
+import { acceptInvite } from '@/api/appMemberController.ts'
 import AppCard from '@/components/AppCard.vue'
 import AppPreviewModal from '@/components/AppPreviewModal.vue'
 import { userLoginStore } from '@/stores/loginUser.ts'
@@ -13,6 +14,11 @@ import {
   isFeaturedApp,
   MAX_USER_APP_PAGE_SIZE,
 } from '@/utils/app.ts'
+import {
+  canAccessAppDetail,
+  canAccessAppMembers,
+  isPendingAppInvite,
+} from '@/utils/appMembers.ts'
 
 const router = useRouter()
 const loginUserStore = userLoginStore()
@@ -29,6 +35,7 @@ const createLoading = ref(false)
 const previewVisible = ref(false)
 const currentPreviewApp = ref<API.AppVO>()
 const currentPreviewUrl = ref('')
+const acceptingAppId = ref<number>()
 
 const isLogin = computed(() => !!loginUserStore.loginUser.id)
 
@@ -140,15 +147,23 @@ const openAppConversation = (app?: API.AppVO) => {
 }
 
 const canViewConversation = (app?: API.AppVO) => {
-  const loginUserId = loginUserStore.loginUser.id
-  const ownerId = app?.userId ?? app?.user?.id
-
-  // 只有本人作品才展示“查看对话”按钮，避免查看他人作品时误入可对话入口。
-  return !!loginUserId && !!ownerId && loginUserId === ownerId
+  return canAccessAppDetail(app, loginUserStore.loginUser)
 }
 
 const canPreviewApp = (app?: API.AppVO) => {
   return !!getAppStaticPreviewUrl(app)
+}
+
+const canPreviewMyApp = (app?: API.AppVO) => {
+  return canAccessAppDetail(app, loginUserStore.loginUser) && canPreviewApp(app)
+}
+
+const canViewMembers = (app?: API.AppVO) => {
+  return canAccessAppMembers(app, loginUserStore.loginUser.id)
+}
+
+const shouldShowAcceptInvite = (app?: API.AppVO) => {
+  return isPendingAppInvite(app)
 }
 
 const openAppPreview = (app?: API.AppVO) => {
@@ -162,6 +177,37 @@ const openAppPreview = (app?: API.AppVO) => {
   currentPreviewApp.value = app
   currentPreviewUrl.value = previewUrl
   previewVisible.value = true
+}
+
+const openMemberPage = (app?: API.AppVO) => {
+  if (!app?.id) {
+    return
+  }
+
+  router.push({
+    path: `/app/members/${app.id}`,
+  })
+}
+
+const handleAcceptInvite = async (app?: API.AppVO) => {
+  if (!app?.id || acceptingAppId.value) {
+    return
+  }
+
+  acceptingAppId.value = app.id
+  try {
+    const res = await acceptInvite({
+      appId: app.id,
+    })
+    if (res.data.code === 0) {
+      message.success('已接受邀请，可以查看作品和成员了')
+      await Promise.all([fetchMyApps(), fetchFeaturedApps()])
+    } else {
+      message.error('接受邀请失败，' + res.data.message)
+    }
+  } finally {
+    acceptingAppId.value = undefined
+  }
 }
 
 const handleMySearch = () => {
@@ -264,11 +310,18 @@ onMounted(() => {
                 <AppCard
                   :app="app"
                   :featured="isFeaturedApp(app.priority)"
+                  :show-accept-invite="shouldShowAcceptInvite(app)"
                   :can-view-conversation="canViewConversation(app)"
-                  :can-preview="canPreviewApp(app)"
+                  :can-preview="canPreviewMyApp(app)"
+                  :can-view-members="canViewMembers(app)"
                   :author-name="loginUserStore.loginUser.userName || app.user?.userName || '我'"
                   :author-initial="app.user?.userName || loginUserStore.loginUser.userName || '我'"
+                  :accept-button-text="acceptingAppId === app.id ? '接受中...' : '接受邀请'"
+                  :preview-button-text="shouldShowAcceptInvite(app) ? '接受后查看作品' : '查看作品'"
+                  member-button-text="查看成员"
+                  @accept="handleAcceptInvite"
                   @conversation="openAppConversation"
+                  @members="openMemberPage"
                   @preview="openAppPreview"
                 />
               </a-col>
@@ -321,10 +374,12 @@ onMounted(() => {
                 featured
                 :can-view-conversation="canViewConversation(app)"
                 :can-preview="canPreviewApp(app)"
+                :can-view-members="canViewMembers(app)"
                 :author-name="app.user?.userName || 'NoCode 官方'"
                 :author-initial="app.user?.userName || 'N'"
                 :cover-title="app.appName || '精选应用'"
                 @conversation="openAppConversation"
+                @members="openMemberPage"
                 @preview="openAppPreview"
               />
             </a-col>

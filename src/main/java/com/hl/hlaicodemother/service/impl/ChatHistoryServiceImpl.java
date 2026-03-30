@@ -80,8 +80,8 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         // 获取应用信息
         App app = appService.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        // 校验应用ID和用户ID是否匹配
-        appService.checkAppOwner(app, loginUser);
+        // 校验应用查看权限
+        appService.checkAppViewAuth(app, loginUser);
         // 构建查询条件
         ChatHistoryQueryRequest chatHistoryQueryRequest = new ChatHistoryQueryRequest();
         chatHistoryQueryRequest.setAppId(appId);
@@ -131,7 +131,7 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         ThrowUtils.throwIf(loginUser == null, ErrorCode.NOT_LOGIN_ERROR);
         App app = appService.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        appService.checkAppOwner(app, loginUser);
+        appService.checkAppViewAuth(app, loginUser);
         QueryWrapper queryWrapper = QueryWrapper.create()
                 .eq(ChatHistory::getAppId, appId)
                 .orderBy(ChatHistory::getCreateTime, false);

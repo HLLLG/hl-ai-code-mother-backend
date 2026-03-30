@@ -27,6 +27,10 @@
           </a-space>
           <template #overlay>
             <a-menu>
+              <a-menu-item @click="goProfile">
+                <UserOutlined />
+                个人信息
+              </a-menu-item>
               <a-menu-item @click="doLogout">
                 <LogoutOutlined />
                 退出登录
@@ -52,7 +56,7 @@ import { Menu } from 'ant-design-vue'
 import logoUrl from '@/assets/logo.png'
 import type { MenuItemConfig } from '@/config/menu.ts'
 import { userLoginStore } from '@/stores/loginUser.ts'
-import { LogoutOutlined } from '@ant-design/icons-vue'
+import { LogoutOutlined, UserOutlined } from '@ant-design/icons-vue'
 import { userLogout } from '@/api/userController.ts'
 
 const props = defineProps<{
@@ -114,6 +118,10 @@ const goHome = () => {
   if (route.path !== '/') {
     router.push('/')
   }
+}
+
+const goProfile = () => {
+  router.push('/user/profile')
 }
 
 const onMenuClick: MenuProps['onClick'] = ({ key }) => {

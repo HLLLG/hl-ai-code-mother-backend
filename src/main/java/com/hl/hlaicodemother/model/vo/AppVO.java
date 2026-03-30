@@ -1,6 +1,5 @@
 package com.hl.hlaicodemother.model.vo;
 
-import com.mybatisflex.annotation.Column;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -82,6 +81,16 @@ public class AppVO implements Serializable {
      * 创建用户信息
      */
     private UserVO user;
+
+    /**
+     * 当前登录用户在该应用中的成员角色
+     */
+    private String myMemberRole;
+
+    /**
+     * 当前登录用户在该应用中的成员状态
+     */
+    private Integer myMemberStatus;
 
     private static final long serialVersionUID = 1L;
 }

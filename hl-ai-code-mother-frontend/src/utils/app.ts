@@ -10,7 +10,7 @@ export const getAppStaticPreviewUrl = (app?: API.AppVO) => {
   }
 
   // 作品预览地址与后端 serveStaticResource 路由保持一致：/static/{codeGenType}_{appId}/...
-  return getStaticPreviewUrl(app.codeGenType, String(app.id), app.currentVersion)
+  return getStaticPreviewUrl(app.codeGenType, String(app.id), String(app.currentVersion || 1))
 }
 
 export const getAppDeployPreviewUrl = (deployKey?: string) => {

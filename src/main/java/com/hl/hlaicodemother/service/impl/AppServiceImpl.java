@@ -15,11 +15,14 @@ import com.hl.hlaicodemother.mapper.AppMapper;
 import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
+import com.hl.hlaicodemother.model.entity.AppMember;
 import com.hl.hlaicodemother.model.entity.User;
+import com.hl.hlaicodemother.model.enums.AppMemberStatusEnum;
 import com.hl.hlaicodemother.model.enums.ChatHistoryMessageTypeEnum;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
 import com.hl.hlaicodemother.model.vo.AppVO;
 import com.hl.hlaicodemother.model.vo.UserVO;
+import com.hl.hlaicodemother.service.AppMemberService;
 import com.hl.hlaicodemother.service.AppService;
 import com.hl.hlaicodemother.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -29,6 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
@@ -62,6 +66,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private ChatHistoryServiceImpl chatHistoryService;
 
+    @Resource
+    private AppMemberService appMemberService;
+
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User user) {
         // 校验参数
@@ -70,8 +77,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 校验应用存在
         App app = getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        // 校验应用归属
-        checkAppOwner(app, user);
+        // 校验应用查看权限
+        checkAppViewAuth(app, user);
         // 获取应用的代码生成类型
         String codeGenType = app.getCodeGenType();
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
@@ -114,11 +121,12 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(user == null, ErrorCode.NOT_LOGIN_ERROR);
         App app = getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        checkAppOwner(app, user);
+        checkAppViewAuth(app, user);
         return aiGenerationTaskManager.cancelTask(buildGenerationTaskKey(appId, user.getId()));
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public Long addApp(AppAddRequest appAddRequest, User loginUser) {
         // 构造入库对象
         App app = new App();
@@ -138,6 +146,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         this.validApp(app, true);
         boolean result = this.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用创建失败");
+        boolean addOwnerResult = appMemberService.addOwnerMember(app.getId(), loginUser.getId());
+        ThrowUtils.throwIf(!addOwnerResult, ErrorCode.OPERATION_ERROR, "初始化应用 owner 失败");
         return app.getId();
     }
 
@@ -274,6 +284,21 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 仅本人或者管理员可操作
         if (!user.getId().equals(app.getUserId()) && !UserConstant.ADMIN_ROLE.equals(user.getUserRole())) {
             throw new BusinessException(ErrorCode.NOT_AUTH_ERROR, "无权操作该应用");
+        }
+    }
+
+    @Override
+    public void checkAppViewAuth(App app, User user) {
+        if (app == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用不存在");
+        }
+        ThrowUtils.throwIf(user == null, ErrorCode.NOT_LOGIN_ERROR);
+        if (user.getId().equals(app.getUserId()) || UserConstant.ADMIN_ROLE.equals(user.getUserRole())) {
+            return;
+        }
+        AppMember appMember = appMemberService.getAppMember(app.getId(), user.getId());
+        if (appMember == null || !AppMemberStatusEnum.ACTIVE.getValue().equals(appMember.getMemberStatus())) {
+            throw new BusinessException(ErrorCode.NOT_AUTH_ERROR, "无权查看该应用");
         }
     }
 

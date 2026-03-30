@@ -4,10 +4,19 @@
       <div class="cover-overlay">
         <div class="cover-actions">
           <a-button
+            v-if="showAcceptInvite"
+            type="primary"
+            size="large"
+            class="preview-button preview-button-primary"
+            @click.stop="emit('accept', app)"
+          >
+            {{ acceptButtonText }}
+          </a-button>
+          <a-button
             v-if="canViewConversation"
             type="primary"
             size="large"
-            class="preview-button"
+            class="preview-button preview-button-primary"
             @click.stop="emit('conversation', app)"
           >
             {{ conversationButtonText }}
@@ -19,6 +28,14 @@
             @click.stop="emit('preview', app)"
           >
             {{ previewButtonText }}
+          </a-button>
+          <a-button
+            v-if="canViewMembers"
+            size="large"
+            class="preview-button preview-button-secondary"
+            @click.stop="emit('members', app)"
+          >
+            {{ memberButtonText }}
           </a-button>
         </div>
       </div>
@@ -51,32 +68,42 @@ interface Props {
   app: API.AppVO
   featured?: boolean
   featuredTagText?: string
+  showAcceptInvite?: boolean
   canViewConversation?: boolean
   canPreview?: boolean
+  canViewMembers?: boolean
   authorName?: string
   authorInitial?: string
   userAvatar?: string
   coverTitle?: string
+  acceptButtonText?: string
   conversationButtonText?: string
   previewButtonText?: string
+  memberButtonText?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   featured: false,
   featuredTagText: '精选',
+  showAcceptInvite: false,
   canViewConversation: false,
   canPreview: false,
+  canViewMembers: false,
   authorName: '',
   authorInitial: '',
   userAvatar: '',
   coverTitle: '',
+  acceptButtonText: '接受邀请',
   conversationButtonText: '查看对话',
   previewButtonText: '查看作品',
+  memberButtonText: '查看成员',
 })
 
 const emit = defineEmits<{
+  (e: 'accept', app: API.AppVO): void
   (e: 'conversation', app: API.AppVO): void
   (e: 'preview', app: API.AppVO): void
+  (e: 'members', app: API.AppVO): void
 }>()
 
 const authorNameText = computed(() => props.authorName || props.app.user?.userName || '未命名用户')
@@ -119,9 +146,12 @@ const authorInitialText = computed(() => {
   height: 44px;
   border: none;
   border-radius: 999px;
+  font-weight: 600;
+}
+
+.preview-button-primary {
   background: rgba(255, 255, 255, 0.96);
   color: #111827;
-  font-weight: 600;
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.15);
 }
 
@@ -130,8 +160,8 @@ const authorInitialText = computed(() => {
   color: #ffffff;
 }
 
-.preview-button:hover,
-.preview-button:focus {
+.preview-button-primary:hover,
+.preview-button-primary:focus {
   background: #ffffff;
   color: #111827;
 }

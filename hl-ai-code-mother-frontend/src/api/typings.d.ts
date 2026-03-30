@@ -10,6 +10,48 @@ declare namespace API {
     priority?: number
   }
 
+  type AppMemberAcceptRequest = {
+    appId?: number
+  }
+
+  type AppMemberInviteRequest = {
+    appId?: number
+    userId?: number
+    memberRole?: string
+  }
+
+  type AppMemberQueryRequest = {
+    pageNum?: number
+    pageSize?: number
+    sortField?: string
+    sortOrder?: string
+    id?: number
+    appId?: number
+    userId?: number
+    memberRole?: string
+    memberStatus?: number
+    invitedBy?: number
+  }
+
+  type AppMemberRoleUpdateRequest = {
+    appId?: number
+    userId?: number
+    memberRole?: string
+  }
+
+  type AppMemberVO = {
+    id?: number
+    appId?: number
+    userId?: number
+    memberRole?: string
+    memberStatus?: number
+    invitedBy?: number
+    lastActiveTime?: string
+    createTime?: string
+    updateTime?: string
+    user?: UserVO
+  }
+
   type AppQueryRequest = {
     pageNum?: number
     pageSize?: number
@@ -45,6 +87,8 @@ declare namespace API {
     createTime?: string
     updateTime?: string
     user?: UserVO
+    myMemberRole?: string
+    myMemberStatus?: number
   }
 
   type BaseResponseAppVO = {
@@ -75,6 +119,12 @@ declare namespace API {
     code?: number
     message?: string
     data?: number
+  }
+
+  type BaseResponsePageAppMemberVO = {
+    code?: number
+    message?: string
+    data?: PageAppMemberVO
   }
 
   type BaseResponsePageAppVO = {
@@ -183,6 +233,15 @@ declare namespace API {
     userRole?: string
     createTime?: string
     updateTime?: string
+  }
+
+  type PageAppMemberVO = {
+    records?: AppMemberVO[]
+    pageNumber?: number
+    pageSize?: number
+    totalPage?: number
+    totalRow?: number
+    optimizeCountQuery?: boolean
   }
 
   type PageAppVO = {

@@ -11,7 +11,7 @@ import java.util.Map;
 
 public class MyBatisCodeGenerator {
 
-    private static final String[] TABLE_NAME = {"chat_history"};
+    private static final String[] TABLE_NAME = {"app_member"};
 
     public static void main(String[] args) {
         // 获取数据库连接信息

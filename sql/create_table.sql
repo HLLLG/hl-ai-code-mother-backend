@@ -87,3 +87,23 @@ create table chat_history
     INDEX idx_appId_createTime (appId, createTime) -- 游标查询核心索引
 ) comment '对话历史' collate = utf8mb4_unicode_ci;
 
+-- 应用成员表（团队空间）
+create table if not exists app_member
+(
+    id             bigint auto_increment comment 'id' primary key,
+    appId          bigint                                not null comment '应用 id',
+    userId         bigint                                not null comment '用户 id',
+    memberRole     varchar(32) default 'editor'          not null comment '成员角色：owner/editor/viewer',
+    memberStatus   tinyint     default 1                 not null comment '成员状态：0-pending 1-active 2-removed 3-rejected',
+    invitedBy      bigint                                null comment '邀请人用户 id',
+    lastActiveTime datetime                              null comment '最后活跃时间',
+    createTime     datetime    default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime     datetime    default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete       tinyint     default 0                 not null comment '是否删除',
+
+    unique key uk_appId_userId (appId, userId),
+    index idx_appId (appId),
+    index idx_userId (userId),
+    index idx_appId_status (appId, memberStatus),
+    index idx_appId_role (appId, memberRole)
+) comment '应用成员表' collate = utf8mb4_unicode_ci;

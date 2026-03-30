@@ -84,6 +84,14 @@ public interface AppService extends IService<App> {
     void checkAppOwner(App app, User user);
 
     /**
+     * 校验应用查看权限
+     *
+     * @param app 应用
+     * @param user 用户
+     */
+    void checkAppViewAuth(App app, User user);
+
+    /**
      * 构造用户查询条件
      *
      * @param appQueryRequest 查询请求

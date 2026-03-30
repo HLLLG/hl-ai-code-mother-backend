@@ -249,7 +249,11 @@ const goToChat = () => {
 // 打开预览
 const openPreview = () => {
   if (appInfo.value?.codeGenType && appInfo.value?.id) {
-    const url = getStaticPreviewUrl(appInfo.value.codeGenType, String(appInfo.value.id))
+    const url = getStaticPreviewUrl(
+      appInfo.value.codeGenType,
+      String(appInfo.value.id),
+      String(appInfo.value.currentVersion || 1),
+    )
     window.open(url, '_blank')
   }
 }

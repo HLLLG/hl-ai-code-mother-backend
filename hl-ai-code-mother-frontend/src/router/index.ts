@@ -3,10 +3,12 @@ import HomePage from '@/pages/HomePage.vue'
 import UserManagePage from '@/pages/admin/UserManagePage.vue'
 import UserLoginPage from '@/pages/user/UserLoginPage.vue'
 import UserRegisterPage from '@/pages/user/UserRegisterPage.vue'
+import UserProfilePage from '@/pages/user/UserProfilePage.vue'
 import AppManagePage from '@/pages/admin/AppManagePage.vue'
 import ChatHistoryManagePage from '@/pages/admin/ChatHistoryManagePage.vue'
 import AppChatPage from '@/pages/app/AppChatPage.vue'
 import AppEditPage from '@/pages/app/AppEditPage.vue'
+import AppMemberManagePage from '@/pages/app/AppMemberManagePage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -53,6 +55,16 @@ const router = createRouter({
       meta: {
         requiresAuth: true,
         fullWidth: true,
+        requiresAppAccess: true,
+      },
+    },
+    {
+      path: '/app/members/:id',
+      name: '成员管理',
+      component: AppMemberManagePage,
+      meta: {
+        requiresAuth: true,
+        requiresAppMember: true,
       },
     },
     {
@@ -72,6 +84,14 @@ const router = createRouter({
       path: '/user/register',
       name: '用户注册',
       component: UserRegisterPage,
+    },
+    {
+      path: '/user/profile',
+      name: '个人信息',
+      component: UserProfilePage,
+      meta: {
+        requiresAuth: true,
+      },
     },
   ],
 })

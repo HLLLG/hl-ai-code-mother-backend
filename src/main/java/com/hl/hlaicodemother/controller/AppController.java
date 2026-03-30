@@ -15,9 +15,11 @@ import com.hl.hlaicodemother.model.dto.app.AppAdminUpdateRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.dto.app.AppUpdateRequest;
 import com.hl.hlaicodemother.model.entity.App;
+import com.hl.hlaicodemother.model.entity.AppMember;
 import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.vo.AppVO;
+import com.hl.hlaicodemother.service.AppMemberService;
 import com.hl.hlaicodemother.service.AppService;
 import com.hl.hlaicodemother.service.AppVersionService;
 import com.hl.hlaicodemother.service.UserService;
@@ -33,8 +35,11 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 应用 控制层。
@@ -55,6 +60,9 @@ public class AppController {
 
     @Resource
     private AppVersionService appVersionService;
+
+    @Resource
+    private AppMemberService appMemberService;
 
     /**
      * 与AI模型对话，生成代码
@@ -224,8 +232,12 @@ public class AppController {
      * @return 版本数量
      */
     @GetMapping("/get/version/count")
-    public BaseResponse<Integer> getAppVersionCount(@RequestParam Long appId) {
+    public BaseResponse<Integer> getAppVersionCount(@RequestParam Long appId, HttpServletRequest request) {
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
+        User loginUser = userService.getLoginUser(request);
+        App app = appService.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        appService.checkAppViewAuth(app, loginUser);
         int versionCount = (int) appVersionService.count(new QueryWrapper().eq(AppVersion::getAppId, appId));
         return ResultUtils.success(versionCount);
     }
@@ -237,17 +249,21 @@ public class AppController {
      * @return 应用详情
      */
     @GetMapping("/get/vo")
-    public BaseResponse<AppVO> getAppVoById(Long id) {
+    public BaseResponse<AppVO> getAppVoById(Long id, HttpServletRequest request) {
         ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
+        User loginUser = userService.getLoginUser(request);
         // 查询数据库
         App app = appService.getById(id);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        appService.checkAppViewAuth(app, loginUser);
         // 获取封装类（包含用户信息）
-        return ResultUtils.success(appService.getAppVO(app));
+        AppVO appVO = appService.getAppVO(app);
+        fillMyMemberInfo(List.of(appVO), loginUser);
+        return ResultUtils.success(appVO);
     }
 
     /**
-     * 分页获取当前用户创建的应用列表
+     * 分页获取当前用户可查看的应用列表
      *
      * @param appQueryRequest 查询请求
      * @return 分页结果
@@ -260,12 +276,22 @@ public class AppController {
         ThrowUtils.throwIf(appQueryRequest.getPageSize() > 20, ErrorCode.PARAMS_ERROR, "每页最多20条");
         // 获取登录用户
         User loginUser = userService.getLoginUser(request);
-        // 只查询当前用户的应用
-        appQueryRequest.setUserId(loginUser.getId());
+        Set<Long> visibleAppIdSet = new LinkedHashSet<>();
+        List<App> ownerAppList = appService.list(new QueryWrapper().eq("userId", loginUser.getId()));
+        ownerAppList.forEach(app -> visibleAppIdSet.add(app.getId()));
+        visibleAppIdSet.addAll(appMemberService.listVisibleAppIdsByUserId(loginUser.getId()));
+        if (visibleAppIdSet.isEmpty()) {
+            return ResultUtils.success(new Page<>(appQueryRequest.getPageNum(), appQueryRequest.getPageSize(), 0));
+        }
+        appQueryRequest.setUserId(null);
+        QueryWrapper queryWrapper = appService.getQueryWrapper(appQueryRequest)
+                .in("id", visibleAppIdSet);
         Page<App> appPage = appService.page(new Page<>(appQueryRequest.getPageNum(), appQueryRequest.getPageSize()),
-                appService.getQueryWrapper(appQueryRequest));
+                queryWrapper);
         Page<AppVO> appVOPage = new Page<>(appPage.getPageNumber(), appPage.getPageSize(), appPage.getTotalRow());
-        appVOPage.setRecords(appService.getAppVOList(appPage.getRecords()));
+        List<AppVO> appVOList = appService.getAppVOList(appPage.getRecords());
+        fillMyMemberInfo(appVOList, loginUser);
+        appVOPage.setRecords(appVOList);
         return ResultUtils.success(appVOPage);
     }
 
@@ -376,5 +402,37 @@ public class AppController {
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
         // 获取封装类（包含用户信息）
         return ResultUtils.success(appService.getAppVO(app));
+    }
+
+    /**
+     * 填充当前用户在应用中的成员信息
+     * 将应用列表中的成员角色和状态信息补充到 AppVO 对象中
+     *
+     * @param appVOList 应用 VO 对象列表
+     * @param loginUser 当前登录用户
+     */
+    private void fillMyMemberInfo(List<AppVO> appVOList, User loginUser) {
+        // 参数有效性校验
+        if (appVOList == null || appVOList.isEmpty() || loginUser == null) {
+            return;
+        }
+        // 提取所有应用的 ID 集合
+        Set<Long> appIdSet = appVOList.stream().map(AppVO::getId).collect(Collectors.toSet());
+        // 批量查询当前用户在这些应用中的成员信息
+        Map<Long, AppMember> appMemberMap = appMemberService.getAppMemberMap(appIdSet, loginUser.getId());
+        // 遍历应用列表，为每个应用填充成员信息
+        appVOList.forEach(appVO -> {
+            // 跳过用户自己创建的应用
+            if (loginUser.getId().equals(appVO.getUserId())) {
+                return;
+            }
+            // 从成员信息映射表中获取当前应用对应的成员信息
+            AppMember appMember = appMemberMap.get(appVO.getId());
+            // 如果存在成员信息，则设置到 AppVO 对象中
+            if (appMember != null) {
+                appVO.setMyMemberRole(appMember.getMemberRole());
+                appVO.setMyMemberStatus(appMember.getMemberStatus());
+            }
+        });
     }
 }

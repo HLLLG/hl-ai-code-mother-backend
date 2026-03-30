@@ -42,13 +42,9 @@ export async function downloadChatHistoryMd(
   options?: { [key: string]: any }
 ) {
   const { appId: param0, ...queryParams } = params
-  return request<Blob>(`/chatHistory/app/${param0}/export/md`, {
+  return request<string>(`/chatHistory/app/${param0}/export/md`, {
     method: 'GET',
-    headers: {
-      Accept: 'text/markdown',
-    },
     params: { ...queryParams },
-    responseType: 'blob',
     ...(options || {}),
   })
 }

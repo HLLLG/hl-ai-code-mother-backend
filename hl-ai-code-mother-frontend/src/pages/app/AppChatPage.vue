@@ -21,6 +21,9 @@
           </template>
           应用详情
         </a-button>
+        <a-button v-if="canViewMembers" type="default" @click="openMembersPage">
+          成员管理
+        </a-button>
         <a-button type="default" @click="exportChatHistory" :loading="exportingChatHistory">
           <template #icon>
             <DownloadOutlined />
@@ -202,6 +205,7 @@ import {
   PauseCircleOutlined,
 } from '@ant-design/icons-vue'
 import { userLoginStore } from '@/stores/loginUser.ts'
+import { canAccessAppMembers } from '@/utils/appMembers.ts'
 
 const route = useRoute()
 const router = useRouter()
@@ -258,6 +262,10 @@ const isAdmin = computed(() => {
   return loginUserStore.loginUser.userRole === 'admin'
 })
 
+const canViewMembers = computed(() => {
+  return canAccessAppMembers(appInfo.value, loginUserStore.loginUser.id)
+})
+
 // 应用详情相关
 const appDetailVisible = ref(false)
 
@@ -270,6 +278,10 @@ const versionOptions = computed(() => {
     }
   })
 })
+
+const getApiAppId = () => {
+  return appId.value as unknown as number
+}
 
 const normalizeCursor = (record?: API.ChatHistory) => {
   return record?.createTime || record?.updateTime
@@ -309,7 +321,7 @@ const fetchVersionCount = async () => {
 
   try {
     const res = await getAppVersionCount({
-      appId: appId.value,
+      appId: getApiAppId(),
     })
     if (res.data.code === 0) {
       versionCount.value = Math.max(res.data.data ?? 0, 1)
@@ -326,7 +338,7 @@ const fetchChatHistory = async (cursor?: string) => {
   }
 
   const res = await listChatHistory({
-    appId: appId.value,
+    appId: getApiAppId(),
     pageSize: CHAT_HISTORY_PAGE_SIZE,
     ...(cursor ? { lastCreatTime: cursor } : {}),
   })
@@ -410,7 +422,7 @@ const fetchAppInfo = async () => {
   appId.value = id
 
   try {
-    const res = await getAppVoById({ id })
+    const res = await getAppVoById({ id: id as unknown as number })
     if (res.data.code === 0 && res.data.data) {
       appInfo.value = res.data.data
       syncVersionState()
@@ -510,7 +522,7 @@ const stopGenerating = async (shouldNotify = true) => {
   isManualStop.value = true
   try {
     const res = await stopChatToGenCode({
-      appId: appId.value,
+      appId: getApiAppId(),
     })
     if (res.data.code !== 0) {
       console.error('停止生成失败：', res.data.message)
@@ -572,7 +584,7 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
 
     // 构建URL参数
     const params = new URLSearchParams({
-      appId: appId.value || '',
+      appId: String(appId.value || ''),
       message: userMessage,
     })
 
@@ -657,7 +669,7 @@ const updatePreview = () => {
     const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
     previewUrl.value = getStaticPreviewUrl(
       codeGenType,
-      appId.value,
+      String(appId.value),
       String(appInfo.value?.currentVersion || 1),
     )
     return
@@ -693,7 +705,7 @@ const getFileNameFromContentDisposition = (contentDisposition?: string) => {
 
 const getDownloadErrorMessage = async (error: unknown) => {
   if (axios.isAxiosError(error)) {
-    const errorData = error.response?.data
+    const errorData: unknown = error.response?.data
     if (errorData instanceof Blob) {
       const errorText = (await errorData.text()).trim()
       if (!errorText) {
@@ -732,10 +744,13 @@ const exportChatHistory = async () => {
 
   try {
     const res = await downloadChatHistoryMd({
-      appId: appId.value,
+      appId: getApiAppId(),
+    }, {
+      responseType: 'blob',
     })
 
-    const blob = res.data instanceof Blob ? res.data : new Blob([res.data], { type: 'text/markdown' })
+    const rawData: unknown = res.data
+    const blob = rawData instanceof Blob ? rawData : new Blob([String(rawData)], { type: 'text/markdown' })
     const contentDisposition = res.headers['content-disposition'] as string | undefined
     const fileName = getFileNameFromContentDisposition(contentDisposition) || getDefaultChatHistoryFileName()
 
@@ -769,7 +784,7 @@ const deployApp = async () => {
   deploying.value = true
   try {
     const res = await deployAppApi({
-      appId: appId.value,
+      appId: getApiAppId(),
     })
 
     if (res.data.code === 0 && res.data.data) {
@@ -805,6 +820,12 @@ const editApp = () => {
   }
 }
 
+const openMembersPage = () => {
+  if (appInfo.value?.id) {
+    router.push(`/app/members/${appInfo.value.id}`)
+  }
+}
+
 const deleteApp = async () => {
   if (!appInfo.value?.id) return
 
@@ -833,7 +854,7 @@ const handleVersionChange = async (version: number) => {
   switchingVersion.value = true
   try {
     const res = await updateAppVersion({
-      appId: appId.value,
+      appId: getApiAppId(),
       version,
     })
 
