@@ -91,27 +91,10 @@ declare namespace API {
     myMemberStatus?: number
   }
 
-  type AppChatStateVO = {
-    appId?: number
-    occupied?: boolean
-    occupyUserId?: number
-    occupyUserName?: string
-    occupyUserAvatar?: string
-    occupyMemberRole?: string
-    occupyStartTime?: string
-    viewerCount?: number
-  }
-
   type BaseResponseAppVO = {
     code?: number
     message?: string
     data?: AppVO
-  }
-
-  type BaseResponseAppChatStateVO = {
-    code?: number
-    message?: string
-    data?: AppChatStateVO
   }
 
   type BaseResponseBoolean = {
@@ -156,6 +139,12 @@ declare namespace API {
     data?: PageChatHistory
   }
 
+  type BaseResponsePageChatHistoryVO = {
+    code?: number
+    message?: string
+    data?: PageChatHistoryVO
+  }
+
   type BaseResponsePageUserVO = {
     code?: number
     message?: string
@@ -183,9 +172,6 @@ declare namespace API {
     createTime?: string
     updateTime?: string
     isDelete?: number
-    userName?: string
-    userAvatar?: string
-    memberRole?: string
   }
 
   type ChatHistoryQueryRequest = {
@@ -199,6 +185,19 @@ declare namespace API {
     appId?: number
     userId?: number
     lastCreateTime?: string
+  }
+
+  type ChatHistoryVO = {
+    id?: number
+    message?: string
+    messageType?: string
+    appId?: number
+    userId?: number
+    createTime?: string
+    updateTime?: string
+    userName?: string
+    userAvatar?: string
+    memberRole?: string
   }
 
   type chatToGenCodeParams = {
@@ -223,10 +222,6 @@ declare namespace API {
   }
 
   type getAppVersionCountParams = {
-    appId: number
-  }
-
-  type getAppChatStateParams = {
     appId: number
   }
 
@@ -279,6 +274,15 @@ declare namespace API {
 
   type PageChatHistory = {
     records?: ChatHistory[]
+    pageNumber?: number
+    pageSize?: number
+    totalPage?: number
+    totalRow?: number
+    optimizeCountQuery?: boolean
+  }
+
+  type PageChatHistoryVO = {
+    records?: ChatHistoryVO[]
     pageNumber?: number
     pageSize?: number
     totalPage?: number

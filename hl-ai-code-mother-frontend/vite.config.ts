@@ -24,6 +24,7 @@ export default defineConfig(({ mode }) => {
             [apiBaseUrl]: {
               target: apiProxyTarget,
               changeOrigin: true,
+              ws: true,
             },
           },
         }

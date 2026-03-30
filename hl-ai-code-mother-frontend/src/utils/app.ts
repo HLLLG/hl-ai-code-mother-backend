@@ -35,3 +35,22 @@ export const isFeaturedApp = (priority?: number) => {
   return (priority ?? 0) >= FEATURED_APP_PRIORITY
 }
 
+export const APP_CHAT_MESSAGE_TYPE_ENUM = {
+  INFO: 'INFO',
+  ERROR: 'ERROR',
+  ENTER_CHAT: 'ENTER_CHAT',
+  EXIT_CHAT: 'EXIT_CHAT',
+  CHAT_ACTION: 'CHAT_ACTION',
+}
+
+export const APP_CHAT_MESSAGE_TYPE_MAP = {
+  INFO: '发送通知',
+  ERROR: '发送错误',
+  ENTER_CHAT: '进入对话状态',
+  EXIT_CHAT: '退出对话状态',
+  CHAT_ACTION: '执行对话操作',
+}
+
+
+
+

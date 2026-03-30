@@ -7,9 +7,7 @@ import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.exception.ThrowUtils;
-import com.hl.hlaicodemother.manager.AppChatSessionManager;
 import com.hl.hlaicodemother.mapper.ChatHistoryMapper;
-import com.hl.hlaicodemother.model.dto.appChat.AppChatEvent;
 import com.hl.hlaicodemother.model.dto.chatHistory.ChatHistoryQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
 import com.hl.hlaicodemother.model.entity.AppMember;
@@ -66,9 +64,6 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
     @Resource
     private AppMemberService appMemberService;
 
-    @Resource
-    private AppChatSessionManager appChatSessionManager;
-
     @Override
     public ChatHistoryVO addChatMessage(Long appId, String message, String messageType, Long userId) {
         // 校验参数
@@ -89,14 +84,7 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         // 保存对话历史
         boolean result = this.save(chatHistory);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "保存对话消息失败");
-        ChatHistoryVO chatHistoryVO = getChatHistoryVO(chatHistory);
-        appChatSessionManager.broadcast(appId, AppChatEvent.builder()
-                .eventType("message_added")
-                .appId(appId)
-                .eventTime(LocalDateTime.now())
-                .data(chatHistoryVO)
-                .build());
-        return chatHistoryVO;
+        return getChatHistoryVO(chatHistory);
     }
 
     @Override

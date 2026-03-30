@@ -8,13 +8,11 @@ import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.constant.UserConstant;
 import com.hl.hlaicodemother.core.AiCodeGeneratorFacade;
+import com.hl.hlaicodemother.manager.websocket.AppChatWebSocketHandler;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.exception.ThrowUtils;
-import com.hl.hlaicodemother.manager.AppChatLockManager;
-import com.hl.hlaicodemother.manager.AppChatSessionManager;
 import com.hl.hlaicodemother.mapper.AppMapper;
-import com.hl.hlaicodemother.model.dto.appChat.AppChatEvent;
 import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
@@ -24,7 +22,6 @@ import com.hl.hlaicodemother.model.enums.AppMemberRoleEnum;
 import com.hl.hlaicodemother.model.enums.AppMemberStatusEnum;
 import com.hl.hlaicodemother.model.enums.ChatHistoryMessageTypeEnum;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
-import com.hl.hlaicodemother.model.vo.AppChatStateVO;
 import com.hl.hlaicodemother.model.vo.AppVO;
 import com.hl.hlaicodemother.model.vo.UserVO;
 import com.hl.hlaicodemother.service.AppMemberService;
@@ -43,11 +40,7 @@ import reactor.core.publisher.Flux;
 import java.io.File;
 import java.io.Serializable;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -76,10 +69,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private AppMemberService appMemberService;
 
     @Resource
-    private AppChatLockManager appChatLockManager;
-
-    @Resource
-    private AppChatSessionManager appChatSessionManager;
+    private AppChatWebSocketHandler appChatWebSocketHandler;
 
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User user) {
@@ -91,19 +81,13 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
         // 仅编辑成员且当前进入对话的用户可以发起生成
         checkAppEditAuth(app, user);
-        checkAppChatOccupant(app, user);
+        validateChatEditor(appId, user);
         // 获取应用的代码生成类型
         String codeGenType = app.getCodeGenType();
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
         ThrowUtils.throwIf(codeGenTypeEnum == null, ErrorCode.PARAMS_ERROR, "应用的代码生成类型不合法");
         // 保存用户输入的对话消息
         chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), user.getId());
-        appChatSessionManager.broadcast(appId, AppChatEvent.builder()
-                .eventType("generation_started")
-                .appId(appId)
-                .eventTime(LocalDateTime.now())
-                .data(buildOperatorData(user))
-                .build());
         // 调用 AI 模型接口，生成代码
         String taskKey = buildGenerationTaskKey(appId, user.getId());
         Flux<String> contentFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, app,
@@ -122,12 +106,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                         chatHistoryService.addChatMessage(appId, aiResponse,
                                 ChatHistoryMessageTypeEnum.AI.getValue(), user.getId());
                     }
-                    appChatSessionManager.broadcast(appId, AppChatEvent.builder()
-                            .eventType("generation_finished")
-                            .appId(appId)
-                            .eventTime(LocalDateTime.now())
-                            .data(buildOperatorData(user))
-                            .build());
                 })
                 .doOnError(e -> {
                     log.error("AI 生成代码出错", e);
@@ -135,12 +113,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                     String errorMessage = "AI 生成代码出错: " + e.getMessage();
                     chatHistoryService.addChatMessage(appId, errorMessage,
                             ChatHistoryMessageTypeEnum.AI.getValue(), user.getId());
-                    appChatSessionManager.broadcast(appId, AppChatEvent.builder()
-                            .eventType("generation_finished")
-                            .appId(appId)
-                            .eventTime(LocalDateTime.now())
-                            .data(buildOperatorData(user))
-                            .build());
                 });
     }
 
@@ -151,17 +123,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         App app = getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
         checkAppEditAuth(app, user);
-        checkAppChatOccupant(app, user);
-        boolean stopped = aiGenerationTaskManager.cancelTask(buildGenerationTaskKey(appId, user.getId()));
-        if (stopped) {
-            appChatSessionManager.broadcast(appId, AppChatEvent.builder()
-                    .eventType("generation_stopped")
-                    .appId(appId)
-                    .eventTime(LocalDateTime.now())
-                    .data(buildOperatorData(user))
-                    .build());
-        }
-        return stopped;
+        validateChatEditor(appId, user);
+        return aiGenerationTaskManager.cancelTask(buildGenerationTaskKey(appId, user.getId()));
     }
 
     @Override
@@ -187,6 +150,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用创建失败");
         boolean addOwnerResult = appMemberService.addOwnerMember(app.getId(), loginUser.getId());
         ThrowUtils.throwIf(!addOwnerResult, ErrorCode.OPERATION_ERROR, "初始化应用 owner 失败");
+        appChatWebSocketHandler.assignCreatorAsChatEditor(app.getId(), loginUser.getId());
         return app.getId();
     }
 
@@ -362,27 +326,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     @Override
-    public void checkAppChatOccupant(App app, User user) {
-        if (app == null) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用不存在");
-        }
-        ThrowUtils.throwIf(user == null, ErrorCode.NOT_LOGIN_ERROR);
-        if (!appChatLockManager.isOccupant(app.getId(), user.getId())) {
-            throw new BusinessException(ErrorCode.NOT_AUTH_ERROR, "当前仅进入对话的用户可执行该操作");
-        }
-    }
-
-    @Override
-    public AppChatStateVO getAppChatState(Long appId, User user) {
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
-        ThrowUtils.throwIf(user == null, ErrorCode.NOT_LOGIN_ERROR);
-        App app = getById(appId);
-        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        checkAppViewAuth(app, user);
-        return appChatLockManager.getChatState(appId);
-    }
-
-    @Override
     public QueryWrapper getQueryWrapper(AppQueryRequest appQueryRequest) {
         if (appQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "查询请求不能为空");
@@ -394,12 +337,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         return userId + "_" + appId;
     }
 
-    private Map<String, Object> buildOperatorData(User user) {
-        Map<String, Object> data = new HashMap<>();
-        data.put("userId", user.getId());
-        data.put("userName", user.getUserName());
-        return data;
+    private void validateChatEditor(Long appId, User user) {
+        if (!appChatWebSocketHandler.isChatEditor(appId, user.getId())) {
+            throw new BusinessException(ErrorCode.NOT_AUTH_ERROR, "当前未进入对话状态，无法执行该操作");
+        }
     }
-
 
 }

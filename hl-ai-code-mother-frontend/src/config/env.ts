@@ -9,8 +9,23 @@ export const DEPLOY_DOMAIN = import.meta.env.VITE_DEPLOY_DOMAIN || 'http://local
 // API 基础地址
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8123/api'
 
+const resolveWsBaseUrl = () => {
+  const configuredWsBaseUrl = import.meta.env.VITE_WS_BASE_URL
+  if (configuredWsBaseUrl) {
+    return configuredWsBaseUrl
+  }
+  if (/^https?:\/\//i.test(API_BASE_URL)) {
+    return API_BASE_URL.replace(/^http/i, 'ws')
+  }
+  if (typeof window !== 'undefined') {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${wsProtocol}//${window.location.host}${API_BASE_URL}`
+  }
+  return API_BASE_URL.replace(/^http/i, 'ws')
+}
+
 // WebSocket 基础地址
-export const WS_BASE_URL = API_BASE_URL.replace(/^http/i, 'ws')
+export const WS_BASE_URL = resolveWsBaseUrl()
 
 // 静态资源地址
 export const STATIC_BASE_URL = `${API_BASE_URL}/static`

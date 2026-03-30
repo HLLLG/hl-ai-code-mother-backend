@@ -70,9 +70,18 @@ router.beforeEach(async (to, from, next) => {
       const app = res.data.data
       const canVisitDetail = canAccessAppDetail(app, loginUser)
       const canVisitMembers = canAccessAppMembers(app, loginUser.id)
+      const requiresChatMember = to.path.startsWith('/app/chat/')
 
       if (requiresAppMember && !canVisitMembers) {
-        message.error(app.myMemberStatus === 0 ? '请先接受邀请再查看成员' : '只有应用成员才能进入成员管理')
+        message.error(
+          app.myMemberStatus === 0
+            ? requiresChatMember
+              ? '请先接受邀请再进入应用对话'
+              : '请先接受邀请再查看成员'
+            : requiresChatMember
+              ? '只有应用成员才能进入应用对话'
+              : '只有应用成员才能进入成员管理',
+        )
         next('/')
         return
       }

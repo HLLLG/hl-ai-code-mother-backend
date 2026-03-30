@@ -98,7 +98,13 @@ export const getAppMemberRoleColor = (role?: string) => {
 }
 
 export const isAppOwner = (app: API.AppVO | undefined, loginUserId?: number) => {
-  return !!app?.userId && !!loginUserId && app.userId === loginUserId
+  return (
+    app?.userId !== undefined &&
+    app?.userId !== null &&
+    loginUserId !== undefined &&
+    loginUserId !== null &&
+    String(app.userId) === String(loginUserId)
+  )
 }
 
 export const isPendingAppInvite = (app: API.AppVO | undefined) => {

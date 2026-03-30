@@ -55,7 +55,7 @@ const router = createRouter({
       meta: {
         requiresAuth: true,
         fullWidth: true,
-        requiresAppAccess: true,
+        requiresAppMember: true,
       },
     },
     {

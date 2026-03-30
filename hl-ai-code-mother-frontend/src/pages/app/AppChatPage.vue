@@ -19,17 +19,17 @@
           v-if="canEditChat"
           danger
           @click="leaveChatSession"
-          :disabled="chatSocketConnecting || isGenerating"
+          :disabled="!canExitChat"
         >
           退出对话
         </a-button>
         <a-button
-          v-else
+          v-else-if="isEligibleChatEditor"
           type="primary"
           @click="enterChatSession"
-          :disabled="chatSocketConnecting || !!chatState?.occupied"
+          :disabled="!canEnterChat"
         >
-          {{ chatState?.occupied ? '当前有人协作中' : '进入对话' }}
+          {{ editingUser?.id ? '当前有人协作中' : '进入对话' }}
         </a-button>
         <a-button type="default" @click="showAppDetail">
           <template #icon>
@@ -46,7 +46,20 @@
           </template>
           下载历史对话
         </a-button>
-        <a-button type="primary" @click="deployApp" :loading="deploying" :disabled="!isOwner || !canEditChat">
+        <a-button
+          v-if="!canEditChat"
+          type="default"
+          @click="refreshConversation"
+          :loading="loadingHistory"
+        >
+          刷新对话
+        </a-button>
+        <a-button
+          type="primary"
+          @click="deployApp"
+          :loading="deploying"
+          :disabled="!isOwner || !canEditChat"
+        >
           <template #icon>
             <CloudUploadOutlined />
           </template>
@@ -74,11 +87,28 @@
             <span>正在加载历史消息...</span>
           </div>
           <div v-for="(message, index) in messages" :key="message.id ?? index" class="message-item">
-            <div v-if="message.type === 'user'" class="user-message">
-              <div class="message-content">{{ message.content }}</div>
-              <div class="message-avatar">
-                <a-avatar :src="message.userAvatar || loginUserStore.loginUser.userAvatar" />
-              </div>
+            <div
+              v-if="message.type === 'user'"
+              :class="[
+                'user-message',
+                isSelfUserMessage(message) ? 'self-user-message' : 'other-user-message',
+              ]"
+            >
+              <template v-if="isSelfUserMessage(message)">
+                <div class="message-content">{{ message.content }}</div>
+                <div class="message-avatar">
+                  <a-avatar :src="message.userAvatar || loginUserStore.loginUser.userAvatar" />
+                </div>
+              </template>
+              <template v-else>
+                <div class="message-avatar">
+                  <a-avatar :src="message.userAvatar || loginUserStore.loginUser.userAvatar" />
+                </div>
+                <div class="message-bubble">
+                  <div class="message-meta">{{ message.userName || '协作成员' }}</div>
+                  <div class="message-content">{{ message.content }}</div>
+                </div>
+              </template>
             </div>
             <div v-else class="ai-message">
               <div class="message-avatar">
@@ -169,7 +199,14 @@
             <a-spin size="large" />
             <p>正在生成网站...</p>
           </div>
-          <iframe v-else-if="previewUrl" :src="previewUrl" class="preview-iframe"></iframe>
+          <iframe
+            v-else-if="previewUrl"
+            :key="previewUrl"
+            :src="previewUrl"
+            class="preview-iframe"
+            title="生成页面预览"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"
+          ></iframe>
         </div>
       </div>
     </div>
@@ -199,7 +236,6 @@ import axios from 'axios'
 import { message } from 'ant-design-vue'
 import {
   getAppVoById,
-  getAppChatState,
   deployApp as deployAppApi,
   deleteApp as deleteAppApi,
   getAppVersionCount,
@@ -214,7 +250,7 @@ import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import AppDetailModal from '@/components/AppDetailModal.vue'
 import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
 import logo from '@/assets/logo.png'
-import { API_BASE_URL, WS_BASE_URL, getStaticPreviewUrl } from '@/config/env'
+import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
 
 import {
   CloudUploadOutlined,
@@ -225,7 +261,9 @@ import {
   PauseCircleOutlined,
 } from '@ant-design/icons-vue'
 import { userLoginStore } from '@/stores/loginUser.ts'
-import { canAccessAppMembers } from '@/utils/appMembers.ts'
+import { APP_MEMBER_ROLE, canAccessAppMembers } from '@/utils/appMembers.ts'
+import AppChatWebSocket from '@/utils/AppChatWebSocket.ts'
+import { APP_CHAT_MESSAGE_TYPE_ENUM } from '@/utils/app.ts'
 
 const route = useRoute()
 const router = useRouter()
@@ -247,20 +285,16 @@ interface Message {
   content: string
   createTime?: string
   loading?: boolean
+  userId?: number
   userName?: string
   userAvatar?: string
   memberRole?: string
 }
 
-interface AppChatSocketEvent {
-  eventType?: string
-  appId?: number
-  data?: any
-}
-
-interface AppChatConnectionPayload {
-  accessMode?: 'editor' | 'viewer'
-  state?: API.AppChatStateVO
+interface AppChatWsMessage {
+  type?: string
+  message?: string
+  user?: API.UserVO
 }
 
 const messages = ref<Message[]>([])
@@ -272,10 +306,20 @@ const hasInitialConversation = ref(false)
 const activeEventSource = ref<EventSource | null>(null)
 const activeAiMessageIndex = ref<number | null>(null)
 const isManualStop = ref(false)
-const chatSocket = ref<WebSocket | null>(null)
+const chatSocket = ref<AppChatWebSocket | null>(null)
 const chatSocketConnecting = ref(false)
-const chatAccessMode = ref<'editor' | 'viewer'>('viewer')
-const chatState = ref<API.AppChatStateVO>()
+/** 连接超时后是否已自动重试过一轮（避免无限重连） */
+const chatSocketConnectRetried = ref(false)
+/** WebSocket 长时间停在 CONNECTING 时 onopen/onclose 可能都不触发，会导致 chatSocketConnecting 一直为 true、按钮永久禁用 */
+const CHAT_SOCKET_CONNECT_MS = 20000
+let chatSocketConnectTimer: ReturnType<typeof setTimeout> | undefined
+
+const clearChatSocketConnectTimer = () => {
+  if (chatSocketConnectTimer !== undefined) {
+    clearTimeout(chatSocketConnectTimer)
+    chatSocketConnectTimer = undefined
+  }
+}
 const loadingHistory = ref(false)
 const loadingMoreHistory = ref(false)
 const hasMoreHistory = ref(false)
@@ -293,7 +337,7 @@ const deployUrl = ref('')
 
 // 权限相关
 const isOwner = computed(() => {
-  return appInfo.value?.userId === loginUserStore.loginUser.id
+  return isSameId(appInfo.value?.userId, loginUserStore.loginUser.id)
 })
 
 const isAdmin = computed(() => {
@@ -304,11 +348,35 @@ const canViewMembers = computed(() => {
   return canAccessAppMembers(appInfo.value, loginUserStore.loginUser.id)
 })
 
-const canEditChat = computed(() => chatAccessMode.value === 'editor')
+const isEligibleChatEditor = computed(() => {
+  return (
+    isOwner.value ||
+    appInfo.value?.myMemberRole === APP_MEMBER_ROLE.OWNER ||
+    appInfo.value?.myMemberRole === APP_MEMBER_ROLE.EDITOR
+  )
+})
+
+/** 当前占用对话协作用户（WebSocket ENTER_CHAT / EXIT_CHAT 维护） */
+const editingUser = ref<API.UserVO>()
+const canEnterChat = computed(() => {
+  return !editingUser.value
+})
+const canExitChat = computed(() => {
+  return editingUser.value?.id === loginUserStore.loginUser.id
+})
+const canEditChat = canExitChat
+
+const canEnterChatSession = computed(() => {
+  return isEligibleChatEditor.value && !editingUser.value
+})
 
 const readonlyTooltipText = computed(() => {
-  if (chatState.value?.occupied) {
-    return `${chatState.value.occupyUserName || '其他成员'} 正在协作中，你当前只能查看对话`
+  const occupant = editingUser.value
+  if (occupant?.id && !isSameId(occupant.id, loginUserStore.loginUser.id)) {
+    return `${occupant.userName || '其他成员'} 正在协作中，你当前只能查看对话`
+  }
+  if (!isEligibleChatEditor.value) {
+    return '当前角色仅支持围观协作与刷新对话'
   }
   return '当前未进入对话，请先点击进入对话'
 })
@@ -317,10 +385,17 @@ const chatStatusText = computed(() => {
   if (canEditChat.value) {
     return '你已进入对话，可发送消息、停止生成和切换版本'
   }
-  if (chatState.value?.occupied) {
-    return `${chatState.value.occupyUserName || '其他成员'} 正在协作中，你当前处于只读围观模式`
+  if (chatSocketConnecting.value) {
+    return '正在连接协作通道，请稍候…'
   }
-  return '当前无人占用对话，你可以点击进入对话开始协作'
+  const occupant = editingUser.value
+  if (occupant?.id && !isSameId(occupant.id, loginUserStore.loginUser.id)) {
+    return `${occupant.userName || '其他成员'} 正在协作中，你当前处于只读围观模式`
+  }
+  if (!isEligibleChatEditor.value) {
+    return '当前角色仅支持围观协作，可在成员完成回复后刷新查看最新内容'
+  }
+  return '当前无人占用对话，owner 或编辑者可点击进入对话开始协作'
 })
 
 // 应用详情相关
@@ -336,21 +411,29 @@ const versionOptions = computed(() => {
   })
 })
 
+const isSameId = (left?: string | number, right?: string | number) => {
+  if (left === undefined || left === null || right === undefined || right === null) {
+    return false
+  }
+  return String(left) === String(right)
+}
+
 const getApiAppId = () => {
   return appId.value as unknown as number
 }
 
-const normalizeCursor = (record?: API.ChatHistory) => {
+const normalizeCursor = (record?: API.ChatHistoryVO) => {
   return record?.createTime || record?.updateTime
 }
 
-const mapChatHistoryToMessage = (record: API.ChatHistory): Message => {
+const mapChatHistoryToMessage = (record: API.ChatHistoryVO): Message => {
   const normalizedType = record.messageType?.toLowerCase()
   return {
     id: record.id,
     type: normalizedType === 'user' ? 'user' : 'ai',
     content: record.message || '',
     createTime: record.createTime,
+    userId: record.userId,
     userName: normalizedType === 'user' ? record.userName : 'AI 助手',
     userAvatar:
       normalizedType === 'user' ? record.userAvatar || loginUserStore.loginUser.userAvatar : logo,
@@ -395,7 +478,7 @@ const fetchVersionCount = async () => {
 
 const fetchChatHistory = async (cursor?: string) => {
   if (!appId.value) {
-    return [] as API.ChatHistory[]
+    return [] as API.ChatHistoryVO[]
   }
 
   const res = await listChatHistory({
@@ -411,7 +494,7 @@ const fetchChatHistory = async (cursor?: string) => {
   return res.data.data?.records ?? []
 }
 
-const updateHistoryPagination = (records: API.ChatHistory[]) => {
+const updateHistoryPagination = (records: API.ChatHistoryVO[]) => {
   hasMoreHistory.value = records.length >= CHAT_HISTORY_PAGE_SIZE
   oldestHistoryCursor.value = normalizeCursor(records[0])
 }
@@ -500,194 +583,162 @@ const fetchAppInfo = async () => {
   }
 }
 
-const fetchChatState = async () => {
-  if (!appId.value) {
+const isSelfUserMessage = (messageItem: Message) => {
+  return messageItem.type === 'user' && isSameId(messageItem.userId, loginUserStore.loginUser.id)
+}
+
+const notifyChatAction = () => {
+  chatSocket.value?.sendMessage({
+    type: APP_CHAT_MESSAGE_TYPE_ENUM.CHAT_ACTION,
+  })
+}
+
+const refreshConversation = async (shouldNotify = true) => {
+  const fetched = await fetchAppInfo()
+  if (!fetched) {
     return
   }
-  try {
-    const res = await getAppChatState({
-      appId: getApiAppId(),
-    })
-    if (res.data.code === 0) {
-      chatState.value = res.data.data
-    }
-  } catch (error) {
-    console.error('获取协作状态失败：', error)
+  await fetchVersionCount()
+  await loadInitialHistory()
+  updatePreview()
+  if (shouldNotify) {
+    message.success('对话已刷新')
   }
-}
-
-const syncChatConnection = (payload?: AppChatConnectionPayload) => {
-  if (!payload) {
-    return
-  }
-  chatAccessMode.value = payload.accessMode === 'editor' ? 'editor' : 'viewer'
-  chatState.value = payload.state
-}
-
-const appendIncomingMessage = (record: API.ChatHistory) => {
-  const nextMessage = mapChatHistoryToMessage(record)
-  const existingIndex = messages.value.findIndex((item) => item.id && item.id === nextMessage.id)
-  if (existingIndex >= 0) {
-    messages.value[existingIndex] = {
-      ...messages.value[existingIndex],
-      ...nextMessage,
-      loading: false,
-    }
-    return
-  }
-  if (canEditChat.value && record.userId === loginUserStore.loginUser.id) {
-    if (nextMessage.type === 'user') {
-      return
-    }
-    const loadingIndex =
-      activeAiMessageIndex.value ??
-      messages.value.findIndex((item) => item.type === 'ai' && item.loading)
-    if (loadingIndex >= 0 && messages.value[loadingIndex]) {
-      messages.value[loadingIndex] = {
-        ...messages.value[loadingIndex],
-        ...nextMessage,
-        loading: false,
-      }
-      return
-    }
-  }
-  messages.value.push(nextMessage)
-  historyMessageCount.value += 1
-  nextTick(scrollToBottom)
-}
-
-const handleSocketEvent = async (event: MessageEvent<string>) => {
-  try {
-    const payload = JSON.parse(event.data) as AppChatSocketEvent
-    switch (payload.eventType) {
-      case 'state_snapshot':
-        syncChatConnection(payload.data as AppChatConnectionPayload)
-        break
-      case 'lock_acquired':
-        chatState.value = payload.data as API.AppChatStateVO
-        if (chatState.value?.occupyUserId !== loginUserStore.loginUser.id) {
-          chatAccessMode.value = 'viewer'
-        }
-        break
-      case 'lock_released':
-        chatState.value = payload.data as API.AppChatStateVO
-        if (chatAccessMode.value !== 'editor') {
-          chatAccessMode.value = 'viewer'
-        }
-        break
-      case 'message_added':
-        appendIncomingMessage(payload.data as API.ChatHistory)
-        break
-      case 'generation_started':
-        if (!canEditChat.value) {
-          isGenerating.value = true
-        }
-        break
-      case 'generation_finished':
-      case 'generation_stopped':
-        if (!canEditChat.value) {
-          isGenerating.value = false
-        }
-        break
-      case 'version_switched': {
-        const nextVersion = Number(payload.data?.version)
-        if (nextVersion > 0) {
-          selectedVersion.value = nextVersion
-          if (appInfo.value) {
-            appInfo.value = {
-              ...appInfo.value,
-              currentVersion: nextVersion,
-            }
-          }
-          updatePreview()
-        }
-        break
-      }
-      case 'error':
-        if (payload.data?.message) {
-          message.warning(payload.data.message)
-        }
-        break
-      default:
-        break
-    }
-  } catch (error) {
-    console.error('处理协作消息失败：', error)
-  }
-}
-
-const buildChatSocketUrl = () => {
-  return `${WS_BASE_URL}/ws/app/${getApiAppId()}/chat`
 }
 
 const connectChatSocket = async () => {
-  if (!appId.value) {
+  if (!appId.value || chatSocketConnecting.value || chatSocket.value) {
     return
   }
-  if (chatSocket.value) {
-    chatSocket.value.close()
-    chatSocket.value = null
-  }
+
+  clearChatSocketConnectTimer()
   chatSocketConnecting.value = true
-  await new Promise<void>((resolve) => {
-    let settled = false
-    const socket = new WebSocket(buildChatSocketUrl())
-    chatSocket.value = socket
-    socket.onopen = () => undefined
-    socket.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data) as AppChatSocketEvent
-        if (payload.eventType === 'state_snapshot' && !settled) {
-          settled = true
-          resolve()
-        }
-      } catch (error) {
-        console.error('解析协作初始化消息失败：', error)
-      }
-      void handleSocketEvent(event)
+  const socket = new AppChatWebSocket(String(appId.value))
+  chatSocket.value = socket
+
+  socket.on('open', () => {
+    if (chatSocket.value !== socket) {
+      return
     }
-    socket.onerror = (error) => {
-      console.error('协作 WebSocket 连接失败：', error)
-      if (!settled) {
-        settled = true
-        resolve()
+    clearChatSocketConnectTimer()
+    chatSocketConnecting.value = false
+    chatSocketConnectRetried.value = false
+    void (async () => {
+      if (canEditChat.value) {
+        await maybeSendInitialMessage()
+      } else if (canEnterChatSession.value) {
+        enterChatSession()
       }
+    })()
+  })
+
+  socket.on('close', () => {
+    if (chatSocket.value !== socket) {
+      return
     }
-    socket.onclose = () => {
-      if (chatSocket.value === socket) {
-        chatSocket.value = null
-        chatSocketConnecting.value = false
-        if (chatAccessMode.value === 'editor') {
-          chatAccessMode.value = 'viewer'
-        }
-      }
-      if (!settled) {
-        settled = true
-        resolve()
-      }
+    clearChatSocketConnectTimer()
+    chatSocketConnecting.value = false
+    chatSocket.value = null
+    editingUser.value = undefined
+  })
+
+  socket.on('error', () => {
+    if (chatSocket.value !== socket) {
+      return
+    }
+    clearChatSocketConnectTimer()
+    chatSocketConnecting.value = false
+    socket.disconnect()
+    chatSocket.value = null
+  })
+
+  socket.on(APP_CHAT_MESSAGE_TYPE_ENUM.INFO, (msg?: AppChatWsMessage) => {
+    if (msg?.message) {
+      message.info(msg.message)
     }
   })
-  chatSocketConnecting.value = false
-}
 
-const sendChatSocketAction = (action: 'enter' | 'leave') => {
-  if (!chatSocket.value || chatSocket.value.readyState !== WebSocket.OPEN) {
-    return false
-  }
-  chatSocket.value.send(JSON.stringify({ action }))
-  return true
+  socket.on(APP_CHAT_MESSAGE_TYPE_ENUM.ERROR, (msg?: AppChatWsMessage) => {
+    if (msg?.message) {
+      message.error(msg.message)
+    }
+  })
+
+  socket.on(APP_CHAT_MESSAGE_TYPE_ENUM.ENTER_CHAT, (msg?: AppChatWsMessage) => {
+    console.log('收到进入编辑状态消息:', msg)
+    if (msg?.message) {
+      message.info(msg.message)
+    }
+    editingUser.value = msg?.user
+  })
+
+  socket.on(APP_CHAT_MESSAGE_TYPE_ENUM.CHAT_ACTION, (msg?: AppChatWsMessage) => {
+    if (isSameId(msg?.user?.id, loginUserStore.loginUser.id)) {
+      return
+    }
+    message.info(`${msg?.user?.userName || '协作成员'} 正在对话中，完成后可刷新查看最新内容`)
+  })
+
+  socket.on(APP_CHAT_MESSAGE_TYPE_ENUM.EXIT_CHAT, (msg?: AppChatWsMessage) => {
+    console.log('收到退出编辑状态消息:', msg)
+    if (msg?.message) {
+      message.info(msg.message)
+    }
+    editingUser.value = undefined
+  })
+
+  socket.connect()
+
+  chatSocketConnectTimer = setTimeout(() => {
+    chatSocketConnectTimer = undefined
+    if (chatSocket.value !== socket || !chatSocketConnecting.value) {
+      return
+    }
+    chatSocketConnecting.value = false
+    socket.disconnect()
+    chatSocket.value = null
+    if (!chatSocketConnectRetried.value) {
+      chatSocketConnectRetried.value = true
+      message.warning('协作连接较慢，正在自动重试一次…')
+      void connectChatSocket()
+      return
+    }
+    message.error('协作通道连接超时，请检查网络或刷新页面后重试')
+  }, CHAT_SOCKET_CONNECT_MS)
 }
 
 const enterChatSession = () => {
-  if (!sendChatSocketAction('enter')) {
+  if (!chatSocket.value) {
     message.warning('协作连接尚未建立，请稍后重试')
+    return
   }
+  if (!isEligibleChatEditor.value) {
+    message.warning('只有应用 owner 和编辑者可以进入对话')
+    return
+  }
+  if (canEditChat.value) {
+    return
+  }
+  const occupant = editingUser.value
+  if (occupant?.id && !isSameId(occupant.id, loginUserStore.loginUser.id)) {
+    message.warning(`${occupant.userName || '其他成员'} 正在协作中，请稍后再试`)
+    return
+  }
+  chatSocket.value.sendMessage({
+    type: APP_CHAT_MESSAGE_TYPE_ENUM.ENTER_CHAT,
+  })
 }
 
-const leaveChatSession = (notify = true) => {
-  const sent = sendChatSocketAction('leave')
-  if (!sent && notify) {
-    message.warning('当前协作连接不可用')
+const leaveChatSession = (shouldNotify = true) => {
+  if (!canExitChat.value) {
+    return
+  }
+  chatSocket.value?.sendMessage({
+    type: APP_CHAT_MESSAGE_TYPE_ENUM.EXIT_CHAT,
+  })
+  editingUser.value = undefined
+  if (shouldNotify) {
+    message.success('已退出对话')
   }
 }
 
@@ -697,6 +748,9 @@ const sendInitialMessage = async (prompt: string) => {
   messages.value.push({
     type: 'user',
     content: prompt,
+    userId: loginUserStore.loginUser.id,
+    userName: loginUserStore.loginUser.userName,
+    userAvatar: loginUserStore.loginUser.userAvatar,
   })
 
   // 添加AI消息占位符
@@ -713,6 +767,7 @@ const sendInitialMessage = async (prompt: string) => {
   // 开始生成
   isGenerating.value = true
   activeAiMessageIndex.value = aiMessageIndex
+  notifyChatAction()
   await generateCode(prompt, aiMessageIndex)
 }
 
@@ -728,6 +783,9 @@ const sendMessage = async () => {
   messages.value.push({
     type: 'user',
     content: currentMessage,
+    userId: loginUserStore.loginUser.id,
+    userName: loginUserStore.loginUser.userName,
+    userAvatar: loginUserStore.loginUser.userAvatar,
   })
 
   const aiMessageIndex = messages.value.length
@@ -742,6 +800,7 @@ const sendMessage = async () => {
 
   isGenerating.value = true
   activeAiMessageIndex.value = aiMessageIndex
+  notifyChatAction()
   await generateCode(currentMessage, aiMessageIndex)
 }
 
@@ -919,11 +978,13 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
 const updatePreview = () => {
   if (appId.value && shouldShowPreview()) {
     const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
-    previewUrl.value = getStaticPreviewUrl(
+    const base = getStaticPreviewUrl(
       codeGenType,
       String(appId.value),
       String(appInfo.value?.currentVersion || 1),
     )
+    const sep = base.includes('?') ? '&' : '?'
+    previewUrl.value = `${base}${sep}_pv=${Date.now()}`
     return
   }
   previewUrl.value = ''
@@ -995,16 +1056,21 @@ const exportChatHistory = async () => {
   let downloadLink: HTMLAnchorElement | null = null
 
   try {
-    const res = await downloadChatHistoryMd({
-      appId: getApiAppId(),
-    }, {
-      responseType: 'blob',
-    })
+    const res = await downloadChatHistoryMd(
+      {
+        appId: getApiAppId(),
+      },
+      {
+        responseType: 'blob',
+      },
+    )
 
     const rawData: unknown = res.data
-    const blob = rawData instanceof Blob ? rawData : new Blob([String(rawData)], { type: 'text/markdown' })
+    const blob =
+      rawData instanceof Blob ? rawData : new Blob([String(rawData)], { type: 'text/markdown' })
     const contentDisposition = res.headers['content-disposition'] as string | undefined
-    const fileName = getFileNameFromContentDisposition(contentDisposition) || getDefaultChatHistoryFileName()
+    const fileName =
+      getFileNameFromContentDisposition(contentDisposition) || getDefaultChatHistoryFileName()
 
     objectUrl = URL.createObjectURL(blob)
     downloadLink = document.createElement('a')
@@ -1162,10 +1228,9 @@ onMounted(async () => {
   }
   await fetchVersionCount()
   await loadInitialHistory()
-  await fetchChatState()
+  // 协作占用与是否可发首条消息由 WebSocket（ENTER_CHAT / 连接时占用者同步）决定
   await connectChatSocket()
   updatePreview()
-  await maybeSendInitialMessage()
 })
 
 onBeforeRouteLeave(async () => {
@@ -1173,13 +1238,15 @@ onBeforeRouteLeave(async () => {
     await stopGenerating(false)
   }
   leaveChatSession(false)
-  chatSocket.value?.close()
+  clearChatSocketConnectTimer()
+  chatSocket.value?.disconnect()
 })
 
 onBeforeUnmount(() => {
   activeEventSource.value?.close()
   leaveChatSession(false)
-  chatSocket.value?.close()
+  clearChatSocketConnectTimer()
+  chatSocket.value?.disconnect()
 })
 </script>
 
@@ -1336,6 +1403,15 @@ onBeforeUnmount(() => {
   justify-content: flex-start;
 }
 
+.other-user-message {
+  justify-content: flex-start;
+}
+
+.message-bubble {
+  max-width: min(78%, 760px);
+  min-width: 0;
+}
+
 .message-content {
   max-width: min(78%, 760px);
   max-height: 640px;
@@ -1354,6 +1430,14 @@ onBeforeUnmount(() => {
   border-bottom-right-radius: 8px;
 }
 
+.other-user-message .message-content {
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--app-text-body);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-bottom-left-radius: 8px;
+}
+
 .ai-message .message-content {
   background: rgba(255, 255, 255, 0.88);
   color: var(--app-text-body);
@@ -1364,6 +1448,12 @@ onBeforeUnmount(() => {
 .message-avatar {
   flex-shrink: 0;
   padding-top: 4px;
+}
+
+.message-meta {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--app-text-muted);
 }
 
 .loading-indicator {
@@ -1448,6 +1538,7 @@ onBeforeUnmount(() => {
   content: '';
   position: absolute;
   inset: 0;
+  z-index: 0;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.3), transparent 28%);
   pointer-events: none;
 }
@@ -1480,7 +1571,8 @@ onBeforeUnmount(() => {
   min-height: 0;
   height: 0;
   position: relative;
-  overflow: auto;
+  z-index: 1;
+  overflow: hidden;
   overscroll-behavior: contain;
   background:
     radial-gradient(circle at top, rgba(59, 130, 246, 0.06), transparent 24%),
@@ -1519,10 +1611,11 @@ onBeforeUnmount(() => {
 }
 
 .preview-iframe {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 100%;
   border: none;
   background: #ffffff;
 }

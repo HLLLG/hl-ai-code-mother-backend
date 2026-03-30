@@ -158,20 +158,6 @@ export async function getAppVoById(
   })
 }
 
-/** 此处后端没有提供注释 GET /app/chat/state */
-export async function getAppChatState(
-  params: API.getAppChatStateParams,
-  options?: { [key: string]: any }
-) {
-  return request<API.BaseResponseAppChatStateVO>('/app/chat/state', {
-    method: 'GET',
-    params: {
-      ...params,
-    },
-    ...(options || {}),
-  })
-}
-
 /** 此处后端没有提供注释 POST /app/good/list/page/vo */
 export async function listGoodAppVoByPage(
   body: API.AppQueryRequest,
