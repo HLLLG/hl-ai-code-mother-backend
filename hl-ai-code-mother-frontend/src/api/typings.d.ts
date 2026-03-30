@@ -89,7 +89,6 @@ declare namespace API {
     user?: UserVO
     myMemberRole?: string
     myMemberStatus?: number
-    /** 当前占用协作对话席位的用户，与后端 WS 内存态一致 */
     chatOccupantUser?: UserVO
   }
 

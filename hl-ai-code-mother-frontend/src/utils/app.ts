@@ -41,6 +41,8 @@ export const APP_CHAT_MESSAGE_TYPE_ENUM = {
   ENTER_CHAT: 'ENTER_CHAT',
   EXIT_CHAT: 'EXIT_CHAT',
   CHAT_ACTION: 'CHAT_ACTION',
+  /** 围观：同步编辑者与 AI 的流式对话 */
+  CHAT_STREAM: 'CHAT_STREAM',
 }
 
 export const APP_CHAT_MESSAGE_TYPE_MAP = {
@@ -49,7 +51,17 @@ export const APP_CHAT_MESSAGE_TYPE_MAP = {
   ENTER_CHAT: '进入对话状态',
   EXIT_CHAT: '退出对话状态',
   CHAT_ACTION: '执行对话操作',
+  CHAT_STREAM: '对话流式同步',
 }
+
+/** 与后端 AppChatStreamPhaseEnum 一致 */
+export const APP_CHAT_STREAM_PHASE = {
+  START: 'START',
+  CHUNK: 'CHUNK',
+  DONE: 'DONE',
+  ERROR: 'ERROR',
+  STOPPED: 'STOPPED',
+} as const
 
 
 

@@ -294,4 +294,32 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
         broadcastToApp(appId, appChatResponseMessage, null);
     }
 
+    /**
+     * 向同应用下所有 WebSocket 会话广播，但排除指定用户（用于将 SSE 流镜像给围观成员，避免编辑者多连接重复收流）
+     */
+    public void broadcastToAppExceptUser(Long appId, Long excludeUserId, AppChatResponseMessage appChatResponseMessage) {
+        if (appId == null || excludeUserId == null) {
+            return;
+        }
+        try {
+            Set<WebSocketSession> sessionSet = appSessions.get(appId);
+            if (CollUtil.isEmpty(sessionSet)) {
+                return;
+            }
+            String json = objectMapper.writeValueAsString(appChatResponseMessage);
+            TextMessage textMessage = new TextMessage(json);
+            for (WebSocketSession session : sessionSet) {
+                User u = (User) session.getAttributes().get("user");
+                if (u != null && excludeUserId.equals(u.getId())) {
+                    continue;
+                }
+                if (session.isOpen()) {
+                    session.sendMessage(textMessage);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("broadcastToAppExceptUser failed, appId={}", appId, e);
+        }
+    }
+
 }

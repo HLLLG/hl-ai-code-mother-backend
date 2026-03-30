@@ -1,5 +1,6 @@
 package com.hl.hlaicodemother.ai;
 
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
@@ -35,6 +36,14 @@ public class AiGenerationTaskManager {
 
     public void removeTask(String taskKey, TaskContext taskContext) {
         taskContextMap.remove(taskKey, taskContext);
+    }
+
+    /**
+     * 供生成流下游在任务移除前读取取消状态（与 {@link #removeTask} 时序配合使用）
+     */
+    @Nullable
+    public TaskContext getTaskContext(String taskKey) {
+        return taskKey == null ? null : taskContextMap.get(taskKey);
     }
 
     public static class TaskContext {

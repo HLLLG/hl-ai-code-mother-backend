@@ -191,11 +191,11 @@
           </div>
         </div>
         <div class="preview-content">
-          <div v-if="!previewUrl && !isGenerating" class="preview-placeholder">
+          <div v-if="!previewUrl && !isGenerating && !observerRemoteGenerating" class="preview-placeholder">
             <div class="placeholder-icon">🌐</div>
             <p>网站文件生成完成后将在这里展示</p>
           </div>
-          <div v-else-if="isGenerating && !previewUrl" class="preview-loading">
+          <div v-else-if="(isGenerating || observerRemoteGenerating) && !previewUrl" class="preview-loading">
             <a-spin size="large" />
             <p>正在生成网站...</p>
           </div>
@@ -263,7 +263,7 @@ import {
 import { userLoginStore } from '@/stores/loginUser.ts'
 import { APP_MEMBER_ROLE, canAccessAppMembers } from '@/utils/appMembers.ts'
 import AppChatWebSocket from '@/utils/AppChatWebSocket.ts'
-import { APP_CHAT_MESSAGE_TYPE_ENUM } from '@/utils/app.ts'
+import { APP_CHAT_MESSAGE_TYPE_ENUM, APP_CHAT_STREAM_PHASE } from '@/utils/app.ts'
 
 const route = useRoute()
 const router = useRouter()
@@ -295,6 +295,9 @@ interface AppChatWsMessage {
   type?: string
   message?: string
   user?: API.UserVO
+  streamPhase?: string
+  streamId?: string
+  streamPayload?: string
 }
 
 const messages = ref<Message[]>([])
@@ -308,6 +311,10 @@ const activeAiMessageIndex = ref<number | null>(null)
 const isManualStop = ref(false)
 const chatSocket = ref<AppChatWebSocket | null>(null)
 const chatSocketConnecting = ref(false)
+/** 围观：协作者正在生成时用于预览区 loading，与本地 isGenerating 互斥场景下合并展示 */
+const observerRemoteGenerating = ref(false)
+/** 围观：streamId -> 当前轮 AI 占位消息在 messages 中的下标 */
+const observerStreamToAiIndex = ref<Record<string, number>>({})
 /** 连接超时后是否已自动重试过一轮（避免无限重连） */
 const chatSocketConnectRetried = ref(false)
 /** WebSocket 长时间停在 CONNECTING 时 onopen/onclose 可能都不触发，会导致 chatSocketConnecting 一直为 true、按钮永久禁用 */
@@ -613,6 +620,133 @@ const notifyChatAction = () => {
   })
 }
 
+const scheduleCollaborationStreamRefresh = () => {
+  setTimeout(async () => {
+    const fetched = await fetchAppInfo()
+    if (fetched) {
+      await fetchVersionCount()
+      await loadInitialHistory()
+      updatePreview()
+    }
+  }, 1000)
+}
+
+const clearObserverStreamTracking = (streamId: string) => {
+  const next = { ...observerStreamToAiIndex.value }
+  delete next[streamId]
+  observerStreamToAiIndex.value = next
+  observerRemoteGenerating.value = false
+}
+
+const finalizeObserverAiPlaceholder = (
+  streamId: string,
+  options?: { stopped?: boolean; errorText?: string },
+) => {
+  const idx = observerStreamToAiIndex.value[streamId]
+  if (idx === undefined || !messages.value[idx]) {
+    clearObserverStreamTracking(streamId)
+    return
+  }
+  const row = messages.value[idx]
+  row.loading = false
+  if (options?.stopped) {
+    if (!row.content?.trim()) {
+      row.content = '本次生成已停止。'
+    }
+  }
+  if (options?.errorText) {
+    row.content = options.errorText
+  }
+  clearObserverStreamTracking(streamId)
+}
+
+const handleCollaborationChatStream = (msg?: AppChatWsMessage) => {
+  if (canEditChat.value) {
+    return
+  }
+  const phase = msg?.streamPhase
+  const streamId = msg?.streamId
+  if (!streamId || !phase) {
+    return
+  }
+
+  if (phase === APP_CHAT_STREAM_PHASE.START) {
+    observerRemoteGenerating.value = true
+    hasInitialConversation.value = true
+    let payload: { userMessage?: string; user?: API.UserVO }
+    try {
+      payload = JSON.parse(msg.streamPayload || '{}')
+    } catch {
+      observerRemoteGenerating.value = false
+      return
+    }
+    const u = payload.user
+    messages.value.push({
+      type: 'user',
+      content: payload.userMessage || '',
+      userId: u?.id,
+      userName: u?.userName,
+      userAvatar: u?.userAvatar,
+    })
+    messages.value.push({
+      type: 'ai',
+      content: '',
+      loading: true,
+    })
+    const nextMap = { ...observerStreamToAiIndex.value }
+    nextMap[streamId] = messages.value.length - 1
+    observerStreamToAiIndex.value = nextMap
+    void nextTick(() => scrollToBottom())
+    return
+  }
+
+  if (phase === APP_CHAT_STREAM_PHASE.CHUNK) {
+    const idx = observerStreamToAiIndex.value[streamId]
+    if (idx === undefined || !messages.value[idx]) {
+      return
+    }
+    try {
+      const parsed = JSON.parse(msg.streamPayload || '{}')
+      const piece = parsed.d
+      if (piece !== undefined && piece !== null) {
+        const row = messages.value[idx]
+        row.content = (row.content || '') + String(piece)
+        row.loading = false
+        scrollToBottom()
+      }
+    } catch (e) {
+      console.error('协作流式片段解析失败', e)
+    }
+    return
+  }
+
+  if (phase === APP_CHAT_STREAM_PHASE.DONE) {
+    finalizeObserverAiPlaceholder(streamId, {})
+    scheduleCollaborationStreamRefresh()
+    return
+  }
+
+  if (phase === APP_CHAT_STREAM_PHASE.STOPPED) {
+    finalizeObserverAiPlaceholder(streamId, { stopped: true })
+    scheduleCollaborationStreamRefresh()
+    return
+  }
+
+  if (phase === APP_CHAT_STREAM_PHASE.ERROR) {
+    let errText = '抱歉，生成过程中出现了错误，请重试。'
+    try {
+      const parsed = JSON.parse(msg.streamPayload || '{}') as { message?: string }
+      if (parsed.message) {
+        errText = parsed.message
+      }
+    } catch {
+      /* use default */
+    }
+    finalizeObserverAiPlaceholder(streamId, { errorText: errText })
+    scheduleCollaborationStreamRefresh()
+  }
+}
+
 const refreshConversation = async (shouldNotify = true) => {
   const fetched = await fetchAppInfo()
   if (!fetched) {
@@ -700,6 +834,10 @@ const connectChatSocket = async () => {
       return
     }
     message.info(`${msg?.user?.userName || '协作成员'} 正在对话中，完成后可刷新查看最新内容`)
+  })
+
+  socket.on(APP_CHAT_MESSAGE_TYPE_ENUM.CHAT_STREAM, (msg?: AppChatWsMessage) => {
+    handleCollaborationChatStream(msg)
   })
 
   socket.on(APP_CHAT_MESSAGE_TYPE_ENUM.EXIT_CHAT, (msg?: AppChatWsMessage) => {
@@ -1276,6 +1414,8 @@ onBeforeUnmount(() => {
   leaveChatSession(false)
   clearChatSocketConnectTimer()
   chatSocket.value?.disconnect()
+  observerRemoteGenerating.value = false
+  observerStreamToAiIndex.value = {}
 })
 </script>
 

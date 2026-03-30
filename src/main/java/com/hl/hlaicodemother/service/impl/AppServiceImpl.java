@@ -4,11 +4,15 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.constant.UserConstant;
 import com.hl.hlaicodemother.core.AiCodeGeneratorFacade;
 import com.hl.hlaicodemother.manager.websocket.AppChatWebSocketHandler;
+import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatMessageTypeEnum;
+import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatResponseMessage;
+import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatStreamPhaseEnum;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.exception.ThrowUtils;
@@ -36,6 +40,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
 import java.io.Serializable;
@@ -88,19 +93,59 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(codeGenTypeEnum == null, ErrorCode.PARAMS_ERROR, "应用的代码生成类型不合法");
         // 保存用户输入的对话消息
         chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), user.getId());
-        // 调用 AI 模型接口，生成代码
         String taskKey = buildGenerationTaskKey(appId, user.getId());
+        String streamId = UUID.randomUUID().toString();
+        UserVO editorVo = userService.getUserVO(user);
+        // 围观成员：新一轮对话开始
+        Map<String, Object> startPayload = new HashMap<>();
+        startPayload.put("userMessage", message);
+        startPayload.put("user", editorVo);
+        AppChatResponseMessage startMsg = new AppChatResponseMessage();
+        startMsg.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
+        startMsg.setStreamId(streamId);
+        startMsg.setStreamPhase(AppChatStreamPhaseEnum.START.getValue());
+        startMsg.setStreamPayload(JSONUtil.toJsonStr(startPayload));
+        startMsg.setUser(editorVo);
+        appChatWebSocketHandler.broadcastToAppExceptUser(appId, user.getId(), startMsg);
+        // 调用 AI 模型接口，生成代码
         Flux<String> contentFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, app,
                 taskKey);
         StringBuilder chunkBuilder = new StringBuilder();
         return contentFlux
                 .map(chunk -> {
-                    // 收集AI响应内容
                     chunkBuilder.append(chunk);
                     return chunk;
                 })
+                .publishOn(Schedulers.boundedElastic())
+                .doOnNext(chunk -> {
+                    AppChatResponseMessage chunkMsg = new AppChatResponseMessage();
+                    chunkMsg.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
+                    chunkMsg.setStreamId(streamId);
+                    chunkMsg.setStreamPhase(AppChatStreamPhaseEnum.CHUNK.getValue());
+                    chunkMsg.setStreamPayload(JSONUtil.toJsonStr(Map.of("d", chunk)));
+                    chunkMsg.setUser(editorVo);
+                    appChatWebSocketHandler.broadcastToAppExceptUser(appId, user.getId(), chunkMsg);
+                })
                 .doOnComplete(() -> {
-                    // 生成完成后，保存 AI 回复的对话消息
+                    AiGenerationTaskManager.TaskContext ctx = aiGenerationTaskManager.getTaskContext(taskKey);
+                    boolean cancelled = ctx != null && ctx.isCancelled();
+                    if (cancelled) {
+                        AppChatResponseMessage stoppedMsg = new AppChatResponseMessage();
+                        stoppedMsg.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
+                        stoppedMsg.setStreamId(streamId);
+                        stoppedMsg.setStreamPhase(AppChatStreamPhaseEnum.STOPPED.getValue());
+                        stoppedMsg.setStreamPayload(JSONUtil.toJsonStr(Map.of("message", "本次生成已停止。")));
+                        stoppedMsg.setUser(editorVo);
+                        appChatWebSocketHandler.broadcastToAppExceptUser(appId, user.getId(), stoppedMsg);
+                    } else {
+                        AppChatResponseMessage doneMsg = new AppChatResponseMessage();
+                        doneMsg.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
+                        doneMsg.setStreamId(streamId);
+                        doneMsg.setStreamPhase(AppChatStreamPhaseEnum.DONE.getValue());
+                        doneMsg.setStreamPayload(JSONUtil.toJsonStr(Map.of("refreshApp", true)));
+                        doneMsg.setUser(editorVo);
+                        appChatWebSocketHandler.broadcastToAppExceptUser(appId, user.getId(), doneMsg);
+                    }
                     String aiResponse = chunkBuilder.toString();
                     if (StrUtil.isNotBlank(aiResponse)) {
                         chatHistoryService.addChatMessage(appId, aiResponse,
@@ -109,7 +154,14 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 })
                 .doOnError(e -> {
                     log.error("AI 生成代码出错", e);
-                    // 生成过程中发生错误时，保存错误信息到对话历史
+                    AppChatResponseMessage errMsg = new AppChatResponseMessage();
+                    errMsg.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
+                    errMsg.setStreamId(streamId);
+                    errMsg.setStreamPhase(AppChatStreamPhaseEnum.ERROR.getValue());
+                    errMsg.setStreamPayload(JSONUtil.toJsonStr(
+                            Map.of("message", "生成失败: " + (e.getMessage() == null ? "未知错误" : e.getMessage()))));
+                    errMsg.setUser(editorVo);
+                    appChatWebSocketHandler.broadcastToAppExceptUser(appId, user.getId(), errMsg);
                     String errorMessage = "AI 生成代码出错: " + e.getMessage();
                     chatHistoryService.addChatMessage(appId, errorMessage,
                             ChatHistoryMessageTypeEnum.AI.getValue(), user.getId());
