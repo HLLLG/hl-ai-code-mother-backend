@@ -2,6 +2,7 @@ package com.hl.hlaicodemother.service;
 
 import com.hl.hlaicodemother.model.dto.chatHistory.ChatHistoryQueryRequest;
 import com.hl.hlaicodemother.model.entity.User;
+import com.hl.hlaicodemother.model.vo.ChatHistoryVO;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
@@ -27,7 +28,7 @@ public interface ChatHistoryService extends IService<ChatHistory> {
      * @param userId
      * @return
      */
-    boolean addChatMessage(Long appId, String message, String messageType, Long userId);
+    ChatHistoryVO addChatMessage(Long appId, String message, String messageType, Long userId);
 
 
     /**
@@ -38,8 +39,8 @@ public interface ChatHistoryService extends IService<ChatHistory> {
      * @param loginUser
      * @return
      */
-    Page<ChatHistory> listAppChatHistoryByPage(Long appId, int pageSize, LocalDateTime lastedCreateTime,
-                                               User loginUser);
+    Page<ChatHistoryVO> listAppChatHistoryByPage(Long appId, int pageSize, LocalDateTime lastedCreateTime,
+                                                 User loginUser);
 
 
     /**

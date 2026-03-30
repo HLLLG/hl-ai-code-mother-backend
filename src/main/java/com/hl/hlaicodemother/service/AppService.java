@@ -4,6 +4,7 @@ import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
 import com.hl.hlaicodemother.model.entity.User;
+import com.hl.hlaicodemother.model.vo.AppChatStateVO;
 import com.hl.hlaicodemother.model.vo.AppVO;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
@@ -90,6 +91,31 @@ public interface AppService extends IService<App> {
      * @param user 用户
      */
     void checkAppViewAuth(App app, User user);
+
+    /**
+     * 校验应用编辑权限
+     *
+     * @param app 应用
+     * @param user 用户
+     */
+    void checkAppEditAuth(App app, User user);
+
+    /**
+     * 校验当前用户是否为进入对话的占用者
+     *
+     * @param app 应用
+     * @param user 用户
+     */
+    void checkAppChatOccupant(App app, User user);
+
+    /**
+     * 获取应用协作对话状态
+     *
+     * @param appId 应用 id
+     * @param user 当前用户
+     * @return 协作状态
+     */
+    AppChatStateVO getAppChatState(Long appId, User user);
 
     /**
      * 构造用户查询条件

@@ -7,14 +7,20 @@ import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.exception.ThrowUtils;
+import com.hl.hlaicodemother.manager.AppChatSessionManager;
 import com.hl.hlaicodemother.mapper.ChatHistoryMapper;
+import com.hl.hlaicodemother.model.dto.appChat.AppChatEvent;
 import com.hl.hlaicodemother.model.dto.chatHistory.ChatHistoryQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
+import com.hl.hlaicodemother.model.entity.AppMember;
 import com.hl.hlaicodemother.model.entity.ChatHistory;
 import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.enums.ChatHistoryMessageTypeEnum;
+import com.hl.hlaicodemother.model.vo.ChatHistoryVO;
 import com.hl.hlaicodemother.service.AppService;
+import com.hl.hlaicodemother.service.AppMemberService;
 import com.hl.hlaicodemother.service.ChatHistoryService;
+import com.hl.hlaicodemother.service.UserService;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
@@ -33,7 +39,11 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 对话历史 服务层实现。
@@ -50,8 +60,17 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
     @Lazy
     private AppService appService;
 
+    @Resource
+    private UserService userService;
+
+    @Resource
+    private AppMemberService appMemberService;
+
+    @Resource
+    private AppChatSessionManager appChatSessionManager;
+
     @Override
-    public boolean addChatMessage(Long appId, String message, String messageType, Long userId) {
+    public ChatHistoryVO addChatMessage(Long appId, String message, String messageType, Long userId) {
         // 校验参数
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
         ThrowUtils.throwIf(message == null || message.trim().isEmpty(), ErrorCode.PARAMS_ERROR, "消息内容不能为空");
@@ -68,11 +87,20 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
                 .userId(userId)
                 .build();
         // 保存对话历史
-        return this.save(chatHistory);
+        boolean result = this.save(chatHistory);
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "保存对话消息失败");
+        ChatHistoryVO chatHistoryVO = getChatHistoryVO(chatHistory);
+        appChatSessionManager.broadcast(appId, AppChatEvent.builder()
+                .eventType("message_added")
+                .appId(appId)
+                .eventTime(LocalDateTime.now())
+                .data(chatHistoryVO)
+                .build());
+        return chatHistoryVO;
     }
 
     @Override
-    public Page<ChatHistory> listAppChatHistoryByPage(Long appId, int pageSize, LocalDateTime lastCreateTime, User loginUser) {
+    public Page<ChatHistoryVO> listAppChatHistoryByPage(Long appId, int pageSize, LocalDateTime lastCreateTime, User loginUser) {
         // 校验参数
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
         ThrowUtils.throwIf(pageSize <= 0 || pageSize >= 50, ErrorCode.PARAMS_ERROR, "页面大小必须在1-50之间");
@@ -88,7 +116,11 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         chatHistoryQueryRequest.setLastCreateTime(lastCreateTime);
         QueryWrapper queryWrapper = this.getQueryWrapper(chatHistoryQueryRequest);
         // 分页查询对话历史
-        return this.page(Page.of(1, pageSize), queryWrapper);
+        Page<ChatHistory> chatHistoryPage = this.page(Page.of(1, pageSize), queryWrapper);
+        Page<ChatHistoryVO> chatHistoryVOPage = new Page<>(chatHistoryPage.getPageNumber(),
+                chatHistoryPage.getPageSize(), chatHistoryPage.getTotalRow());
+        chatHistoryVOPage.setRecords(getChatHistoryVOList(chatHistoryPage.getRecords()));
+        return chatHistoryVOPage;
     }
 
     @Override
@@ -247,5 +279,74 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
 
     private String formatCreateTime(LocalDateTime createTime) {
         return createTime == null ? "未知时间" : createTime.format(CHAT_HISTORY_TIME_FORMATTER);
+    }
+
+    private ChatHistoryVO getChatHistoryVO(ChatHistory chatHistory) {
+        if (chatHistory == null) {
+            return null;
+        }
+        ChatHistoryVO chatHistoryVO = new ChatHistoryVO();
+        chatHistoryVO.setId(chatHistory.getId());
+        chatHistoryVO.setMessage(chatHistory.getMessage());
+        chatHistoryVO.setMessageType(chatHistory.getMessageType());
+        chatHistoryVO.setAppId(chatHistory.getAppId());
+        chatHistoryVO.setUserId(chatHistory.getUserId());
+        chatHistoryVO.setCreateTime(chatHistory.getCreateTime());
+        chatHistoryVO.setUpdateTime(chatHistory.getUpdateTime());
+        if (chatHistory.getUserId() == null) {
+            return chatHistoryVO;
+        }
+        User user = userService.getById(chatHistory.getUserId());
+        if (user != null) {
+            chatHistoryVO.setUserName(user.getUserName());
+            chatHistoryVO.setUserAvatar(user.getUserAvatar());
+        }
+        AppMember appMember = appMemberService.getAppMember(chatHistory.getAppId(), chatHistory.getUserId());
+        if (appMember != null) {
+            chatHistoryVO.setMemberRole(appMember.getMemberRole());
+        }
+        return chatHistoryVO;
+    }
+
+    private List<ChatHistoryVO> getChatHistoryVOList(List<ChatHistory> chatHistories) {
+        if (CollUtil.isEmpty(chatHistories)) {
+            return Collections.emptyList();
+        }
+        Set<Long> userIdSet = chatHistories.stream()
+                .map(ChatHistory::getUserId)
+                .filter(userId -> userId != null && userId > 0)
+                .collect(Collectors.toSet());
+        Map<Long, User> userMap = userIdSet.isEmpty() ? Collections.emptyMap() : userService.listByIds(userIdSet)
+                .stream()
+                .collect(Collectors.toMap(User::getId, user -> user));
+        Map<String, String> memberRoleMap = chatHistories.stream()
+                .filter(chatHistory -> chatHistory.getAppId() != null && chatHistory.getUserId() != null)
+                .collect(Collectors.toMap(chatHistory -> buildMemberRoleKey(chatHistory.getAppId(), chatHistory.getUserId()),
+                        chatHistory -> {
+                            AppMember appMember = appMemberService.getAppMember(chatHistory.getAppId(), chatHistory.getUserId());
+                            return appMember == null ? "" : StrUtil.blankToDefault(appMember.getMemberRole(), "");
+                        }, (left, right) -> left));
+        return chatHistories.stream().map(chatHistory -> {
+            ChatHistoryVO chatHistoryVO = new ChatHistoryVO();
+            chatHistoryVO.setId(chatHistory.getId());
+            chatHistoryVO.setMessage(chatHistory.getMessage());
+            chatHistoryVO.setMessageType(chatHistory.getMessageType());
+            chatHistoryVO.setAppId(chatHistory.getAppId());
+            chatHistoryVO.setUserId(chatHistory.getUserId());
+            chatHistoryVO.setCreateTime(chatHistory.getCreateTime());
+            chatHistoryVO.setUpdateTime(chatHistory.getUpdateTime());
+            User user = userMap.get(chatHistory.getUserId());
+            if (user != null) {
+                chatHistoryVO.setUserName(user.getUserName());
+                chatHistoryVO.setUserAvatar(user.getUserAvatar());
+            }
+            chatHistoryVO.setMemberRole(memberRoleMap.getOrDefault(
+                    buildMemberRoleKey(chatHistory.getAppId(), chatHistory.getUserId()), ""));
+            return chatHistoryVO;
+        }).toList();
+    }
+
+    private String buildMemberRoleKey(Long appId, Long userId) {
+        return appId + "_" + userId;
     }
 }

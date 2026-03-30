@@ -10,14 +10,17 @@ import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.constant.UserConstant;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.exception.ThrowUtils;
+import com.hl.hlaicodemother.manager.AppChatSessionManager;
 import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
 import com.hl.hlaicodemother.model.dto.app.AppAdminUpdateRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.dto.app.AppUpdateRequest;
+import com.hl.hlaicodemother.model.dto.appChat.AppChatEvent;
 import com.hl.hlaicodemother.model.entity.App;
 import com.hl.hlaicodemother.model.entity.AppMember;
 import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.entity.User;
+import com.hl.hlaicodemother.model.vo.AppChatStateVO;
 import com.hl.hlaicodemother.model.vo.AppVO;
 import com.hl.hlaicodemother.service.AppMemberService;
 import com.hl.hlaicodemother.service.AppService;
@@ -63,6 +66,9 @@ public class AppController {
 
     @Resource
     private AppMemberService appMemberService;
+
+    @Resource
+    private AppChatSessionManager appChatSessionManager;
 
     /**
      * 与AI模型对话，生成代码
@@ -150,13 +156,17 @@ public class AppController {
     }
 
     @PostMapping("/update/app/version")
-    public BaseResponse<Boolean> updateAppVersion(@RequestParam Long appId, @RequestParam Integer version) {
+    public BaseResponse<Boolean> updateAppVersion(@RequestParam Long appId, @RequestParam Integer version,
+                                                  HttpServletRequest request) {
         // 参数校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
         ThrowUtils.throwIf(version == null || version <= 0, ErrorCode.PARAMS_ERROR, "版本号不合法");
+        User loginUser = userService.getLoginUser(request);
         // 获取应用
         App app = appService.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        appService.checkAppEditAuth(app, loginUser);
+        appService.checkAppChatOccupant(app, loginUser);
         // 获取版本信息
         AppVersion appVersion = appVersionService.getOne(new QueryWrapper()
                 .eq(AppVersion::getAppId, appId)
@@ -170,7 +180,32 @@ public class AppController {
         updateApp.setEditTime(LocalDateTime.now());
         boolean result = appService.updateById(updateApp);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用版本更新失败");
+        appChatSessionManager.broadcast(appId, AppChatEvent.builder()
+                .eventType("version_switched")
+                .appId(appId)
+                .eventTime(LocalDateTime.now())
+                .data(Map.of(
+                        "version", version,
+                        "userId", loginUser.getId(),
+                        "userName", loginUser.getUserName()
+                ))
+                .build());
         return ResultUtils.success(result);
+    }
+
+    /**
+     * 获取应用当前协作对话状态。
+     *
+     * @param appId 应用 id
+     * @param request 请求
+     * @return 协作对话状态
+     */
+    @GetMapping("/chat/state")
+    public BaseResponse<AppChatStateVO> getAppChatState(@RequestParam Long appId, HttpServletRequest request) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
+        User loginUser = userService.getLoginUser(request);
+        AppChatStateVO chatStateVO = appService.getAppChatState(appId, loginUser);
+        return ResultUtils.success(chatStateVO);
     }
 
     /**

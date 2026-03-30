@@ -8,6 +8,7 @@ import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.exception.ThrowUtils;
 import com.hl.hlaicodemother.model.dto.chatHistory.ChatHistoryQueryRequest;
 import com.hl.hlaicodemother.model.entity.User;
+import com.hl.hlaicodemother.model.vo.ChatHistoryVO;
 import com.hl.hlaicodemother.service.UserService;
 import com.mybatisflex.core.paginate.Page;
 import jakarta.annotation.Resource;
@@ -49,12 +50,13 @@ public class ChatHistoryController {
      * @return
      */
     @GetMapping("/app/{appId}")
-    public BaseResponse<Page<ChatHistory>> listChatHistory(@PathVariable Long appId,
-                                                           @RequestParam(defaultValue = "10")int pageSize,
+    public BaseResponse<Page<ChatHistoryVO>> listChatHistory(@PathVariable Long appId,
+                                                           @RequestParam(defaultValue = "10") int pageSize,
                                                            @RequestParam(required = false) LocalDateTime lastCreatTime,
                                                            HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
-        Page<ChatHistory> chatHistoryPage = chatHistoryService.listAppChatHistoryByPage(appId, pageSize, lastCreatTime, loginUser);
+        Page<ChatHistoryVO> chatHistoryPage =
+                chatHistoryService.listAppChatHistoryByPage(appId, pageSize, lastCreatTime, loginUser);
         return ResultUtils.success(chatHistoryPage);
     }
 

@@ -11,15 +11,20 @@ import com.hl.hlaicodemother.core.AiCodeGeneratorFacade;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.exception.ThrowUtils;
+import com.hl.hlaicodemother.manager.AppChatLockManager;
+import com.hl.hlaicodemother.manager.AppChatSessionManager;
 import com.hl.hlaicodemother.mapper.AppMapper;
+import com.hl.hlaicodemother.model.dto.appChat.AppChatEvent;
 import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
 import com.hl.hlaicodemother.model.entity.AppMember;
 import com.hl.hlaicodemother.model.entity.User;
+import com.hl.hlaicodemother.model.enums.AppMemberRoleEnum;
 import com.hl.hlaicodemother.model.enums.AppMemberStatusEnum;
 import com.hl.hlaicodemother.model.enums.ChatHistoryMessageTypeEnum;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
+import com.hl.hlaicodemother.model.vo.AppChatStateVO;
 import com.hl.hlaicodemother.model.vo.AppVO;
 import com.hl.hlaicodemother.model.vo.UserVO;
 import com.hl.hlaicodemother.service.AppMemberService;
@@ -41,6 +46,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -69,6 +75,12 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private AppMemberService appMemberService;
 
+    @Resource
+    private AppChatLockManager appChatLockManager;
+
+    @Resource
+    private AppChatSessionManager appChatSessionManager;
+
     @Override
     public Flux<String> chatToGenCode(Long appId, String message, User user) {
         // 校验参数
@@ -77,16 +89,21 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 校验应用存在
         App app = getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        // 校验应用查看权限
-        checkAppViewAuth(app, user);
+        // 仅编辑成员且当前进入对话的用户可以发起生成
+        checkAppEditAuth(app, user);
+        checkAppChatOccupant(app, user);
         // 获取应用的代码生成类型
         String codeGenType = app.getCodeGenType();
         CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
         ThrowUtils.throwIf(codeGenTypeEnum == null, ErrorCode.PARAMS_ERROR, "应用的代码生成类型不合法");
         // 保存用户输入的对话消息
-        boolean result = chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue()
-                , user.getId());
-        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "保存用户对话消息失败");
+        chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), user.getId());
+        appChatSessionManager.broadcast(appId, AppChatEvent.builder()
+                .eventType("generation_started")
+                .appId(appId)
+                .eventTime(LocalDateTime.now())
+                .data(buildOperatorData(user))
+                .build());
         // 调用 AI 模型接口，生成代码
         String taskKey = buildGenerationTaskKey(appId, user.getId());
         Flux<String> contentFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, app,
@@ -105,6 +122,12 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                         chatHistoryService.addChatMessage(appId, aiResponse,
                                 ChatHistoryMessageTypeEnum.AI.getValue(), user.getId());
                     }
+                    appChatSessionManager.broadcast(appId, AppChatEvent.builder()
+                            .eventType("generation_finished")
+                            .appId(appId)
+                            .eventTime(LocalDateTime.now())
+                            .data(buildOperatorData(user))
+                            .build());
                 })
                 .doOnError(e -> {
                     log.error("AI 生成代码出错", e);
@@ -112,6 +135,12 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                     String errorMessage = "AI 生成代码出错: " + e.getMessage();
                     chatHistoryService.addChatMessage(appId, errorMessage,
                             ChatHistoryMessageTypeEnum.AI.getValue(), user.getId());
+                    appChatSessionManager.broadcast(appId, AppChatEvent.builder()
+                            .eventType("generation_finished")
+                            .appId(appId)
+                            .eventTime(LocalDateTime.now())
+                            .data(buildOperatorData(user))
+                            .build());
                 });
     }
 
@@ -121,8 +150,18 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         ThrowUtils.throwIf(user == null, ErrorCode.NOT_LOGIN_ERROR);
         App app = getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        checkAppViewAuth(app, user);
-        return aiGenerationTaskManager.cancelTask(buildGenerationTaskKey(appId, user.getId()));
+        checkAppEditAuth(app, user);
+        checkAppChatOccupant(app, user);
+        boolean stopped = aiGenerationTaskManager.cancelTask(buildGenerationTaskKey(appId, user.getId()));
+        if (stopped) {
+            appChatSessionManager.broadcast(appId, AppChatEvent.builder()
+                    .eventType("generation_stopped")
+                    .appId(appId)
+                    .eventTime(LocalDateTime.now())
+                    .data(buildOperatorData(user))
+                    .build());
+        }
+        return stopped;
     }
 
     @Override
@@ -303,6 +342,47 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     @Override
+    public void checkAppEditAuth(App app, User user) {
+        if (app == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用不存在");
+        }
+        ThrowUtils.throwIf(user == null, ErrorCode.NOT_LOGIN_ERROR);
+        if (user.getId().equals(app.getUserId()) || UserConstant.ADMIN_ROLE.equals(user.getUserRole())) {
+            return;
+        }
+        AppMember appMember = appMemberService.getAppMember(app.getId(), user.getId());
+        if (appMember == null || !AppMemberStatusEnum.ACTIVE.getValue().equals(appMember.getMemberStatus())) {
+            throw new BusinessException(ErrorCode.NOT_AUTH_ERROR, "无权编辑该应用");
+        }
+        String memberRole = appMember.getMemberRole();
+        if (!AppMemberRoleEnum.OWNER.getValue().equals(memberRole)
+                && !AppMemberRoleEnum.EDITOR.getValue().equals(memberRole)) {
+            throw new BusinessException(ErrorCode.NOT_AUTH_ERROR, "当前成员仅支持只读查看");
+        }
+    }
+
+    @Override
+    public void checkAppChatOccupant(App app, User user) {
+        if (app == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用不存在");
+        }
+        ThrowUtils.throwIf(user == null, ErrorCode.NOT_LOGIN_ERROR);
+        if (!appChatLockManager.isOccupant(app.getId(), user.getId())) {
+            throw new BusinessException(ErrorCode.NOT_AUTH_ERROR, "当前仅进入对话的用户可执行该操作");
+        }
+    }
+
+    @Override
+    public AppChatStateVO getAppChatState(Long appId, User user) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
+        ThrowUtils.throwIf(user == null, ErrorCode.NOT_LOGIN_ERROR);
+        App app = getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        checkAppViewAuth(app, user);
+        return appChatLockManager.getChatState(appId);
+    }
+
+    @Override
     public QueryWrapper getQueryWrapper(AppQueryRequest appQueryRequest) {
         if (appQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "查询请求不能为空");
@@ -312,6 +392,13 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     private String buildGenerationTaskKey(Long appId, Long userId) {
         return userId + "_" + appId;
+    }
+
+    private Map<String, Object> buildOperatorData(User user) {
+        Map<String, Object> data = new HashMap<>();
+        data.put("userId", user.getId());
+        data.put("userName", user.getUserName());
+        return data;
     }
 
 

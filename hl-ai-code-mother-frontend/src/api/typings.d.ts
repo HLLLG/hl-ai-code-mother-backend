@@ -91,10 +91,27 @@ declare namespace API {
     myMemberStatus?: number
   }
 
+  type AppChatStateVO = {
+    appId?: number
+    occupied?: boolean
+    occupyUserId?: number
+    occupyUserName?: string
+    occupyUserAvatar?: string
+    occupyMemberRole?: string
+    occupyStartTime?: string
+    viewerCount?: number
+  }
+
   type BaseResponseAppVO = {
     code?: number
     message?: string
     data?: AppVO
+  }
+
+  type BaseResponseAppChatStateVO = {
+    code?: number
+    message?: string
+    data?: AppChatStateVO
   }
 
   type BaseResponseBoolean = {
@@ -166,6 +183,9 @@ declare namespace API {
     createTime?: string
     updateTime?: string
     isDelete?: number
+    userName?: string
+    userAvatar?: string
+    memberRole?: string
   }
 
   type ChatHistoryQueryRequest = {
@@ -203,6 +223,10 @@ declare namespace API {
   }
 
   type getAppVersionCountParams = {
+    appId: number
+  }
+
+  type getAppChatStateParams = {
     appId: number
   }
 
