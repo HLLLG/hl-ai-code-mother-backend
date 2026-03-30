@@ -92,5 +92,10 @@ public class AppVO implements Serializable {
      */
     private Integer myMemberStatus;
 
+    /**
+     * 当前占用协作对话席位的用户（与 WebSocket 内存态一致，便于进入页面前展示占用状态）
+     */
+    private UserVO chatOccupantUser;
+
     private static final long serialVersionUID = 1L;
 }

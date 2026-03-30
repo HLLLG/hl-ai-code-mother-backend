@@ -29,7 +29,7 @@
           @click="enterChatSession"
           :disabled="!canEnterChat"
         >
-          {{ editingUser?.id ? '当前有人协作中' : '进入对话' }}
+          {{ enterChatButtonText }}
         </a-button>
         <a-button type="default" @click="showAppDetail">
           <template #icon>
@@ -358,8 +358,20 @@ const isEligibleChatEditor = computed(() => {
 
 /** 当前占用对话协作用户（WebSocket ENTER_CHAT / EXIT_CHAT 维护） */
 const editingUser = ref<API.UserVO>()
+/** 详情接口 chatOccupantUser 在 WS 握手前即可反映占用者，与 editingUser 合并用于横幅与按钮 */
+const effectiveChatOccupantUser = computed(
+  () => editingUser.value ?? appInfo.value?.chatOccupantUser,
+)
 const canEnterChat = computed(() => {
-  return !editingUser.value
+  const occ = effectiveChatOccupantUser.value
+  return !occ?.id || isSameId(occ.id, loginUserStore.loginUser.id)
+})
+const enterChatButtonText = computed(() => {
+  const occ = effectiveChatOccupantUser.value
+  if (occ?.id && !isSameId(occ.id, loginUserStore.loginUser.id)) {
+    return '当前有人协作中'
+  }
+  return '进入对话'
 })
 const canExitChat = computed(() => {
   return editingUser.value?.id === loginUserStore.loginUser.id
@@ -367,11 +379,15 @@ const canExitChat = computed(() => {
 const canEditChat = canExitChat
 
 const canEnterChatSession = computed(() => {
-  return isEligibleChatEditor.value && !editingUser.value
+  if (!isEligibleChatEditor.value) {
+    return false
+  }
+  const occ = effectiveChatOccupantUser.value
+  return !occ?.id || isSameId(occ.id, loginUserStore.loginUser.id)
 })
 
 const readonlyTooltipText = computed(() => {
-  const occupant = editingUser.value
+  const occupant = effectiveChatOccupantUser.value
   if (occupant?.id && !isSameId(occupant.id, loginUserStore.loginUser.id)) {
     return `${occupant.userName || '其他成员'} 正在协作中，你当前只能查看对话`
   }
@@ -385,15 +401,19 @@ const chatStatusText = computed(() => {
   if (canEditChat.value) {
     return '你已进入对话，可发送消息、停止生成和切换版本'
   }
-  if (chatSocketConnecting.value) {
-    return '正在连接协作通道，请稍候…'
+  const occupant = effectiveChatOccupantUser.value
+  // 尚无占用者时，owner/编辑者应先看到「可进入协作」说明；勿在 WS 握手阶段误用「正在连接」
+  if (!occupant?.id && isEligibleChatEditor.value) {
+    return '当前无人占用对话，owner 或编辑者可点击进入对话开始协作'
   }
-  const occupant = editingUser.value
   if (occupant?.id && !isSameId(occupant.id, loginUserStore.loginUser.id)) {
     return `${occupant.userName || '其他成员'} 正在协作中，你当前处于只读围观模式`
   }
   if (!isEligibleChatEditor.value) {
     return '当前角色仅支持围观协作，可在成员完成回复后刷新查看最新内容'
+  }
+  if (chatSocketConnecting.value) {
+    return '正在连接协作通道，请稍候…'
   }
   return '当前无人占用对话，owner 或编辑者可点击进入对话开始协作'
 })
@@ -670,6 +690,9 @@ const connectChatSocket = async () => {
       message.info(msg.message)
     }
     editingUser.value = msg?.user
+    if (appInfo.value && msg?.user) {
+      appInfo.value = { ...appInfo.value, chatOccupantUser: msg.user }
+    }
   })
 
   socket.on(APP_CHAT_MESSAGE_TYPE_ENUM.CHAT_ACTION, (msg?: AppChatWsMessage) => {
@@ -685,6 +708,9 @@ const connectChatSocket = async () => {
       message.info(msg.message)
     }
     editingUser.value = undefined
+    if (appInfo.value) {
+      appInfo.value = { ...appInfo.value, chatOccupantUser: undefined }
+    }
   })
 
   socket.connect()
@@ -719,7 +745,7 @@ const enterChatSession = () => {
   if (canEditChat.value) {
     return
   }
-  const occupant = editingUser.value
+  const occupant = effectiveChatOccupantUser.value
   if (occupant?.id && !isSameId(occupant.id, loginUserStore.loginUser.id)) {
     message.warning(`${occupant.userName || '其他成员'} 正在协作中，请稍后再试`)
     return
@@ -737,6 +763,9 @@ const leaveChatSession = (shouldNotify = true) => {
     type: APP_CHAT_MESSAGE_TYPE_ENUM.EXIT_CHAT,
   })
   editingUser.value = undefined
+  if (appInfo.value) {
+    appInfo.value = { ...appInfo.value, chatOccupantUser: undefined }
+  }
   if (shouldNotify) {
     message.success('已退出对话')
   }

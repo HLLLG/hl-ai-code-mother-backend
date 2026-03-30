@@ -224,6 +224,16 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
     }
 
     /**
+     * 当前占用对话席位的用户 id（无则 null），供 HTTP 详情等与 WS 态对齐展示
+     */
+    public Long getChatOccupantUserId(Long appId) {
+        if (appId == null) {
+            return null;
+        }
+        return appChatUsers.get(appId);
+    }
+
+    /**
      * 新建应用时由创建者自动占用对话席位，避免首屏必须等 WebSocket ENTER_CHAT 才能发起 SSE。
      */
     public void assignCreatorAsChatEditor(Long appId, Long userId) {

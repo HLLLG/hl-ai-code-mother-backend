@@ -268,6 +268,13 @@ public class AppController {
         // 获取封装类（包含用户信息）
         AppVO appVO = appService.getAppVO(app);
         fillMyMemberInfo(List.of(appVO), loginUser);
+        Long chatOccupantUserId = appChatWebSocketHandler.getChatOccupantUserId(id);
+        if (chatOccupantUserId != null) {
+            User chatOccupant = userService.getById(chatOccupantUserId);
+            if (chatOccupant != null) {
+                appVO.setChatOccupantUser(userService.getUserVO(chatOccupant));
+            }
+        }
         return ResultUtils.success(appVO);
     }
 
