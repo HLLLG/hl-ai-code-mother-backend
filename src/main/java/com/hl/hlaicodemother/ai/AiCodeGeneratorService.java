@@ -2,8 +2,9 @@ package com.hl.hlaicodemother.ai;
 
 import com.hl.hlaicodemother.ai.model.HtmlCodeResult;
 import com.hl.hlaicodemother.ai.model.MultiFileCodeResult;
+import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.SystemMessage;
-import dev.langchain4j.service.spring.AiService;
+import dev.langchain4j.service.UserMessage;
 import reactor.core.publisher.Flux;
 
 /**
@@ -49,4 +50,14 @@ public interface AiCodeGeneratorService {
      */
     @SystemMessage(fromResource = "prompt/codegen-multi-file-system-prompt.txt")
     Flux<String> generateMultiFileStream(String userMessage);
+
+    /**
+     * 生成Vue项目代码的方法，接受一个用户消息作为输入，并返回生成的Vue项目代码。（流式）
+     * 系统提示信息从"prompts/codegen-vue-project-system-prompt.txt"资源文件中获取。
+     * @param appId
+     * @param userMessage
+     * @return
+     */
+    @SystemMessage(fromResource = "prompt/codegen-vue-project-system-prompt.txt")
+    Flux<String> generateVueProjectStream(@MemoryId Long appId, @UserMessage String userMessage);
 }

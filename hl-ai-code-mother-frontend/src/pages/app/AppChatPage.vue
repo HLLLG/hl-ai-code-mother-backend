@@ -660,16 +660,23 @@ const finalizeObserverAiPlaceholder = (
   clearObserverStreamTracking(streamId)
 }
 
+/**
+ * 处理协作方的聊天流式消息（围观模式）
+ * 当当前用户未进入编辑状态时，监听并渲染其他协作者的生成过程
+ */
 const handleCollaborationChatStream = (msg?: AppChatWsMessage) => {
+  // 如果当前用户正在编辑中，则忽略协作流消息
   if (canEditChat.value) {
     return
   }
   const phase = msg?.streamPhase
   const streamId = msg?.streamId
+  // 缺少必要字段则直接返回
   if (!streamId || !phase) {
     return
   }
 
+  // 流开始阶段：初始化消息记录并标记为加载中
   if (phase === APP_CHAT_STREAM_PHASE.START) {
     observerRemoteGenerating.value = true
     hasInitialConversation.value = true
@@ -677,10 +684,12 @@ const handleCollaborationChatStream = (msg?: AppChatWsMessage) => {
     try {
       payload = JSON.parse(msg.streamPayload || '{}')
     } catch {
+      // 解析失败则重置生成状态并退出
       observerRemoteGenerating.value = false
       return
     }
     const u = payload.user
+    // 添加用户消息
     messages.value.push({
       type: 'user',
       content: payload.userMessage || '',
@@ -688,11 +697,13 @@ const handleCollaborationChatStream = (msg?: AppChatWsMessage) => {
       userName: u?.userName,
       userAvatar: u?.userAvatar,
     })
+    // 添加 AI 回复占位符
     messages.value.push({
       type: 'ai',
       content: '',
       loading: true,
     })
+    // 记录当前 streamId 对应的 AI 消息索引，用于后续更新
     const nextMap = { ...observerStreamToAiIndex.value }
     nextMap[streamId] = messages.value.length - 1
     observerStreamToAiIndex.value = nextMap
@@ -700,6 +711,7 @@ const handleCollaborationChatStream = (msg?: AppChatWsMessage) => {
     return
   }
 
+  // 处理流式数据片段：追加 AI 回复内容
   if (phase === APP_CHAT_STREAM_PHASE.CHUNK) {
     const idx = observerStreamToAiIndex.value[streamId]
     if (idx === undefined || !messages.value[idx]) {
@@ -720,18 +732,21 @@ const handleCollaborationChatStream = (msg?: AppChatWsMessage) => {
     return
   }
 
+  // 处理生成完成：结束加载状态并刷新应用信息
   if (phase === APP_CHAT_STREAM_PHASE.DONE) {
     finalizeObserverAiPlaceholder(streamId, {})
     scheduleCollaborationStreamRefresh()
     return
   }
 
+  // 处理生成停止：标记为已停止并刷新应用信息
   if (phase === APP_CHAT_STREAM_PHASE.STOPPED) {
     finalizeObserverAiPlaceholder(streamId, { stopped: true })
     scheduleCollaborationStreamRefresh()
     return
   }
 
+  // 处理生成错误：提取错误信息并更新消息内容
   if (phase === APP_CHAT_STREAM_PHASE.ERROR) {
     let errText = '抱歉，生成过程中出现了错误，请重试。'
     try {

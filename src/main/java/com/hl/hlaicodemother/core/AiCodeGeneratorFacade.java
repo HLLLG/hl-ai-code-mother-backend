@@ -49,7 +49,7 @@ public class AiCodeGeneratorFacade {
      * @param codeGenType
      * @return
      */
-    public File generateAndSaveCode(String userMessage, CodeGenTypeEnum codeGenType, App app) {
+    public File generateAndSaveCode(String userMessage, CodeGenTypeEnum codeGenType, App app, String taskKey) {
         // 校验参数
         if (StrUtil.isBlank(userMessage)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户输入不能为空");
@@ -57,7 +57,8 @@ public class AiCodeGeneratorFacade {
         if (codeGenType == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "代码生成类型不能为空");
         }
-        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(app.getId());
+        AiCodeGeneratorService aiCodeGeneratorService =
+                aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(app.getId(), codeGenType);
         // 根据类型生成代码
         return switch (codeGenType) {
             case HTML -> {
@@ -96,9 +97,11 @@ public class AiCodeGeneratorFacade {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "任务标识不能为空");
         }
         AiGenerationTaskManager.TaskContext taskContext = aiGenerationTaskManager.registerTask(taskKey);
-        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(app.getId());
+        AiCodeGeneratorService aiCodeGeneratorService =
+                aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(app.getId(), codeGenType);
         // 根据类型生成代码
         return switch (codeGenType) {
+
             case HTML -> {
                 Flux<String> htmlCodeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage)
                         .takeUntilOther(taskContext.getCancelSignal());
@@ -109,6 +112,11 @@ public class AiCodeGeneratorFacade {
                         .takeUntilOther(taskContext.getCancelSignal());
                 yield processCodeStream(multiFileCodeStream, CodeGenTypeEnum.MULTI_FILE, app, userMessage, taskKey,
                         taskContext);
+            }
+            case VUE_PROJECT -> {
+                Flux<String> vueProjectStream = aiCodeGeneratorService.generateVueProjectStream(app.getId(), userMessage)
+                        .takeUntilOther(taskContext.getCancelSignal());
+                yield processCodeStream(vueProjectStream, CodeGenTypeEnum.MULTI_FILE, app, userMessage, taskKey, taskContext);
             }
             default -> throw new BusinessException(ErrorCode.PARAMS_ERROR,
                     "不支持的代码生成类型: " + codeGenType.getValue());

@@ -21,11 +21,24 @@ class AiCodeGeneratorFacadeTest {
 
     @Test
     void generateAndSaveCode() {
-        File file = aiCodeGeneratorFacade.generateAndSaveCode("生成一个登录页面，代码不超过50行", CodeGenTypeEnum.MULTI_FILE, new App());
+        File file = aiCodeGeneratorFacade.generateAndSaveCode("生成一个登录页面，代码不超过50行", CodeGenTypeEnum.MULTI_FILE,
+                new App(), "test-task-key");
         Assertions.assertNotNull(file);
     }
 
     @Test
-    void generateAndSaveCodeStream() {
+    void generateVueProjectCodeStream() {
+        App app = new App();
+        app.setId(1L);
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(
+                "简单的任务记录网站，总代码量不超过 200 行",
+                CodeGenTypeEnum.VUE_PROJECT, app, "test-task-key");
+        // 阻塞等待所有数据收集完成
+        List<String> result = codeStream.collectList().block();
+        // 验证结果
+        Assertions.assertNotNull(result);
+        String completeContent = String.join("", result);
+        Assertions.assertNotNull(completeContent);
     }
+
 }
