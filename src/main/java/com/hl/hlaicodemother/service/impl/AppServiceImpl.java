@@ -123,15 +123,11 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 taskKey);
         StringBuilder chunkBuilder = new StringBuilder();
         return contentFlux
-                // 累积生成的代码块，用于后续保存到聊天历史
-                .map(chunk -> {
-                    chunkBuilder.append(chunk);
-                    return chunk;
-                })
                 // 切换到弹性调度器，避免阻塞主线程
                 .publishOn(Schedulers.boundedElastic())
+                // 累积生成的代码块，用于后续保存到聊天历史
                 // 处理每个生成的代码块：构建消息并广播给围观成员
-                .doOnNext(chunk -> {
+                .map(chunk -> {
                     AppChatResponseMessage chunkMsg = new AppChatResponseMessage();
                     chunkMsg.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
                     chunkMsg.setStreamId(streamId);
@@ -139,6 +135,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                     chunkMsg.setStreamPayload(JSONUtil.toJsonStr(Map.of("d", chunk)));
                     chunkMsg.setUser(editorVo);
                     appChatWebSocketHandler.broadcastToAppExceptUser(appId, user.getId(), chunkMsg);
+                    chunkBuilder.append(chunk);
+                    return chunk;
                 })
                 // 处理生成完成事件：根据是否被取消发送不同状态，并保存 AI 响应到聊天历史
                 .doOnComplete(() -> {
@@ -146,6 +144,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                     boolean cancelled = ctx != null && ctx.isCancelled();
                     if (cancelled) {
                         // 任务被取消，发送停止消息
+                        // todo 抽象获取msg的方法
                         AppChatResponseMessage stoppedMsg = new AppChatResponseMessage();
                         stoppedMsg.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
                         stoppedMsg.setStreamId(streamId);

@@ -1,10 +1,15 @@
 package com.hl.hlaicodemother.core;
 
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSON;
+import cn.hutool.json.JSONUtil;
 import com.hl.hlaicodemother.ai.AiCodeGeneratorService;
 import com.hl.hlaicodemother.ai.AiCodeGeneratorServiceFactory;
 import com.hl.hlaicodemother.ai.model.HtmlCodeResult;
 import com.hl.hlaicodemother.ai.model.MultiFileCodeResult;
+import com.hl.hlaicodemother.ai.model.message.AiResponseMessage;
+import com.hl.hlaicodemother.ai.model.message.ToolExecutedMessage;
+import com.hl.hlaicodemother.ai.model.message.ToolRequestMessage;
 import com.hl.hlaicodemother.core.parser.CodeParserExecutor;
 import com.hl.hlaicodemother.core.saver.CodeFileSaverExecutor;
 import com.hl.hlaicodemother.exception.BusinessException;
@@ -15,6 +20,7 @@ import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
 import com.hl.hlaicodemother.service.AppService;
 import com.hl.hlaicodemother.service.AppVersionService;
+import dev.langchain4j.service.TokenStream;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -101,7 +107,6 @@ public class AiCodeGeneratorFacade {
                 aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(app.getId(), codeGenType);
         // 根据类型生成代码
         return switch (codeGenType) {
-
             case HTML -> {
                 Flux<String> htmlCodeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage)
                         .takeUntilOther(taskContext.getCancelSignal());
@@ -114,9 +119,9 @@ public class AiCodeGeneratorFacade {
                         taskContext);
             }
             case VUE_PROJECT -> {
-                Flux<String> vueProjectStream = aiCodeGeneratorService.generateVueProjectStream(app.getId(), userMessage)
+                TokenStream vueProjectStream = aiCodeGeneratorService.generateVueProjectStream(app.getId(), userMessage);
+                yield processTokenStream(vueProjectStream, taskKey, taskContext)
                         .takeUntilOther(taskContext.getCancelSignal());
-                yield processCodeStream(vueProjectStream, CodeGenTypeEnum.MULTI_FILE, app, userMessage, taskKey, taskContext);
             }
             default -> throw new BusinessException(ErrorCode.PARAMS_ERROR,
                     "不支持的代码生成类型: " + codeGenType.getValue());
@@ -149,6 +154,42 @@ public class AiCodeGeneratorFacade {
             } catch (Exception e) {
                 log.error("保存失败", e);
             }
+        }).doFinally(signalType -> aiGenerationTaskManager.removeTask(taskKey, taskContext));
+    }
+
+    /**
+     * 将TokenStream转换为Flux<String>, 并传递工具调用信息
+     *
+     * @param tokenStream
+     * @return
+     */
+    private Flux<String> processTokenStream(TokenStream tokenStream, String taskKey,
+                                            AiGenerationTaskManager.TaskContext taskContext) {
+        return Flux.<String>create(sink -> {
+            tokenStream.onPartialResponse((partialResponse) -> {
+                        AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
+                        sink.next(JSONUtil.toJsonStr(aiResponseMessage));
+                    })
+                    .onPartialToolExecutionRequest((index, partialToolExecutionRequest) -> {
+                        ToolRequestMessage toolRequestMessage = new ToolRequestMessage(partialToolExecutionRequest);
+                        sink.next(JSONUtil.toJsonStr(toolRequestMessage));
+                    })
+                    .onToolExecuted(toolExecution -> {
+                        ToolExecutedMessage toolExecutionMessage = new ToolExecutedMessage(toolExecution);
+                        sink.next(JSONUtil.toJsonStr(toolExecutionMessage));
+                    })
+                    .onCompleteResponse(completeResponse -> {
+                        if (taskContext.isCancelled()) {
+                            log.info("生成已手动停止，跳过保存，taskKey={}", taskKey);
+                            return;
+                        }
+                        sink.complete();
+                    })
+                    .onError(error -> {
+                        error.printStackTrace();
+                        sink.error(error);
+                    })
+                    .start();
         }).doFinally(signalType -> aiGenerationTaskManager.removeTask(taskKey, taskContext));
     }
 }
