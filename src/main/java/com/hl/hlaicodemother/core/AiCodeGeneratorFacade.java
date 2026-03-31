@@ -101,7 +101,6 @@ public class AiCodeGeneratorFacade {
                 aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(app.getId(), codeGenType);
         // 根据类型生成代码
         return switch (codeGenType) {
-
             case HTML -> {
                 Flux<String> htmlCodeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage)
                         .takeUntilOther(taskContext.getCancelSignal());
