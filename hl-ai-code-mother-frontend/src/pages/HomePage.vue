@@ -110,7 +110,6 @@ const handleCreateApp = async () => {
   try {
     const res = await addApp({ initPrompt: prompt })
     if (res.data.code === 0 && res.data.data) {
-      message.success('应用创建成功，正在进入对话页')
       await router.push({
         path: `/app/chat/${res.data.data}`,
       })

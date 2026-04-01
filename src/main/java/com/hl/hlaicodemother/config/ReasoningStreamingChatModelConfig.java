@@ -7,6 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.Duration;
+
 /**
  * 深度思考流式模型配置
  *
@@ -34,6 +36,7 @@ public class ReasoningStreamingChatModelConfig {
                 .maxTokens(maxToken)
                 .apiKey(apiKey)
                 .baseUrl(baseUrl)
+                .timeout(Duration.ofSeconds(120))
                 .logRequests(true)
                 .logResponses(true)
                 .build();

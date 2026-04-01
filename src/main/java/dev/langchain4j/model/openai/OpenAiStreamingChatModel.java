@@ -1,6 +1,7 @@
 package dev.langchain4j.model.openai;
 
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.http.client.HttpClientBuilder;
 import dev.langchain4j.internal.ExceptionMapper;
 import dev.langchain4j.internal.ToolExecutionRequestBuilder;
@@ -12,6 +13,7 @@ import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.ChatRequestParameters;
 import dev.langchain4j.model.chat.request.DefaultChatRequestParameters;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.openai.internal.OpenAiClient;
 import dev.langchain4j.model.openai.internal.chat.*;
@@ -22,6 +24,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
+import static dev.langchain4j.internal.InternalStreamingChatResponseHandlerUtils.onPartialThinking;
 import static dev.langchain4j.internal.InternalStreamingChatResponseHandlerUtils.withLoggingExceptions;
 import static dev.langchain4j.internal.Utils.*;
 import static dev.langchain4j.model.ModelProvider.OPEN_AI;
@@ -40,6 +43,7 @@ public class OpenAiStreamingChatModel implements StreamingChatModel {
     private final OpenAiChatRequestParameters defaultRequestParameters;
     private final Boolean strictJsonSchema;
     private final Boolean strictTools;
+    private final boolean returnThinking;
     private final List<ChatModelListener> listeners;
 
     public OpenAiStreamingChatModel(OpenAiStreamingChatModelBuilder builder) {
@@ -97,6 +101,7 @@ public class OpenAiStreamingChatModel implements StreamingChatModel {
                 .build();
         this.strictJsonSchema = getOrDefault(builder.strictJsonSchema, false);
         this.strictTools = getOrDefault(builder.strictTools, false);
+        this.returnThinking = getOrDefault(builder.returnThinking, false);
         this.listeners = copy(builder.listeners);
     }
 
@@ -119,7 +124,7 @@ public class OpenAiStreamingChatModel implements StreamingChatModel {
                                 .build())
                         .build();
 
-        OpenAiStreamingResponseBuilder openAiResponseBuilder = new OpenAiStreamingResponseBuilder();
+        OpenAiStreamingResponseBuilder openAiResponseBuilder = new OpenAiStreamingResponseBuilder(returnThinking);
         ToolExecutionRequestBuilder toolBuilder = new ToolExecutionRequestBuilder();
 
         client.chatCompletion(openAiRequest)
@@ -149,7 +154,7 @@ public class OpenAiStreamingChatModel implements StreamingChatModel {
                 .execute();
     }
 
-    private static void handle(ChatCompletionResponse partialResponse,
+    private void handle(ChatCompletionResponse partialResponse,
                                ToolExecutionRequestBuilder toolBuilder,
                                StreamingChatResponseHandler handler) {
         if (partialResponse == null) {
@@ -179,6 +184,12 @@ public class OpenAiStreamingChatModel implements StreamingChatModel {
                 withLoggingExceptions(() -> handler.onError(e));
             }
         }
+
+        String reasoningContent = delta.reasoningContent();
+        if (returnThinking && !isNullOrEmpty(reasoningContent)) {
+            onPartialThinking(handler, reasoningContent);
+        }
+
         List<ToolCall> toolCalls = delta.toolCalls();
         if (toolCalls != null) {
             for (ToolCall toolCall : toolCalls) {
@@ -259,6 +270,7 @@ public class OpenAiStreamingChatModel implements StreamingChatModel {
         private Boolean store;
         private Map<String, String> metadata;
         private String serviceTier;
+        private Boolean returnThinking;
         private Duration timeout;
         private Boolean logRequests;
         private Boolean logResponses;
@@ -397,6 +409,11 @@ public class OpenAiStreamingChatModel implements StreamingChatModel {
 
         public OpenAiStreamingChatModelBuilder serviceTier(String serviceTier) {
             this.serviceTier = serviceTier;
+            return this;
+        }
+
+        public OpenAiStreamingChatModelBuilder returnThinking(Boolean returnThinking) {
+            this.returnThinking = returnThinking;
             return this;
         }
 

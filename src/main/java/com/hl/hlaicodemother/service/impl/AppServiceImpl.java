@@ -9,13 +9,14 @@ import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.constant.UserConstant;
 import com.hl.hlaicodemother.core.AiCodeGeneratorFacade;
+import com.hl.hlaicodemother.core.handler.StreamHandlerExecutor;
+import com.hl.hlaicodemother.exception.BusinessException;
+import com.hl.hlaicodemother.exception.ErrorCode;
+import com.hl.hlaicodemother.exception.ThrowUtils;
 import com.hl.hlaicodemother.manager.websocket.AppChatWebSocketHandler;
 import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatMessageTypeEnum;
 import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatResponseMessage;
 import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatStreamPhaseEnum;
-import com.hl.hlaicodemother.exception.BusinessException;
-import com.hl.hlaicodemother.exception.ErrorCode;
-import com.hl.hlaicodemother.exception.ThrowUtils;
 import com.hl.hlaicodemother.mapper.AppMapper;
 import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
 import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
@@ -76,7 +77,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Resource
     private AppChatWebSocketHandler appChatWebSocketHandler;
 
-    
+    @Resource
+    private StreamHandlerExecutor streamHandlerExecutor;
+
+
     /**
      * 通过对话流式生成代码。
      * 校验参数和应用权限后，调用 AI 模型生成代码，并通过 WebSocket 向围观成员广播生成过程（开始、分块、完成/停止/错误）。
@@ -111,79 +115,13 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         Map<String, Object> startPayload = new HashMap<>();
         startPayload.put("userMessage", message);
         startPayload.put("user", editorVo);
-        AppChatResponseMessage startMsg = new AppChatResponseMessage();
-        startMsg.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
-        startMsg.setStreamId(streamId);
-        startMsg.setStreamPhase(AppChatStreamPhaseEnum.START.getValue());
-        startMsg.setStreamPayload(JSONUtil.toJsonStr(startPayload));
-        startMsg.setUser(editorVo);
-        appChatWebSocketHandler.broadcastToAppExceptUser(appId, user.getId(), startMsg);
+        appChatWebSocketHandler.broadcastToApp(appId, user, streamId, AppChatStreamPhaseEnum.START.getValue(),
+                JSONUtil.toJsonStr(startPayload), editorVo);
         // 调用 AI 模型接口，生成代码
-        Flux<String> contentFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, app,
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, app,
                 taskKey);
-        StringBuilder chunkBuilder = new StringBuilder();
-        return contentFlux
-                // 切换到弹性调度器，避免阻塞主线程
-                .publishOn(Schedulers.boundedElastic())
-                // 累积生成的代码块，用于后续保存到聊天历史
-                // 处理每个生成的代码块：构建消息并广播给围观成员
-                .map(chunk -> {
-                    AppChatResponseMessage chunkMsg = new AppChatResponseMessage();
-                    chunkMsg.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
-                    chunkMsg.setStreamId(streamId);
-                    chunkMsg.setStreamPhase(AppChatStreamPhaseEnum.CHUNK.getValue());
-                    chunkMsg.setStreamPayload(JSONUtil.toJsonStr(Map.of("d", chunk)));
-                    chunkMsg.setUser(editorVo);
-                    appChatWebSocketHandler.broadcastToAppExceptUser(appId, user.getId(), chunkMsg);
-                    chunkBuilder.append(chunk);
-                    return chunk;
-                })
-                // 处理生成完成事件：根据是否被取消发送不同状态，并保存 AI 响应到聊天历史
-                .doOnComplete(() -> {
-                    AiGenerationTaskManager.TaskContext ctx = aiGenerationTaskManager.getTaskContext(taskKey);
-                    boolean cancelled = ctx != null && ctx.isCancelled();
-                    if (cancelled) {
-                        // 任务被取消，发送停止消息
-                        // todo 抽象获取msg的方法
-                        AppChatResponseMessage stoppedMsg = new AppChatResponseMessage();
-                        stoppedMsg.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
-                        stoppedMsg.setStreamId(streamId);
-                        stoppedMsg.setStreamPhase(AppChatStreamPhaseEnum.STOPPED.getValue());
-                        stoppedMsg.setStreamPayload(JSONUtil.toJsonStr(Map.of("message", "本次生成已停止。")));
-                        stoppedMsg.setUser(editorVo);
-                        appChatWebSocketHandler.broadcastToAppExceptUser(appId, user.getId(), stoppedMsg);
-                    } else {
-                        // 任务正常完成，发送完成消息并提示刷新应用
-                        AppChatResponseMessage doneMsg = new AppChatResponseMessage();
-                        doneMsg.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
-                        doneMsg.setStreamId(streamId);
-                        doneMsg.setStreamPhase(AppChatStreamPhaseEnum.DONE.getValue());
-                        doneMsg.setStreamPayload(JSONUtil.toJsonStr(Map.of("refreshApp", true)));
-                        doneMsg.setUser(editorVo);
-                        appChatWebSocketHandler.broadcastToAppExceptUser(appId, user.getId(), doneMsg);
-                    }
-                    // 保存完整的 AI 响应到聊天历史
-                    String aiResponse = chunkBuilder.toString();
-                    if (StrUtil.isNotBlank(aiResponse)) {
-                        chatHistoryService.addChatMessage(appId, aiResponse,
-                                ChatHistoryMessageTypeEnum.AI.getValue(), user.getId());
-                    }
-                })
-                // 处理生成过程中的异常：记录日志、广播错误消息并保存错误信息到聊天历史
-                .doOnError(e -> {
-                    log.error("AI 生成代码出错", e);
-                    AppChatResponseMessage errMsg = new AppChatResponseMessage();
-                    errMsg.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
-                    errMsg.setStreamId(streamId);
-                    errMsg.setStreamPhase(AppChatStreamPhaseEnum.ERROR.getValue());
-                    errMsg.setStreamPayload(JSONUtil.toJsonStr(
-                            Map.of("message", "生成失败：" + (e.getMessage() == null ? "未知错误" : e.getMessage()))));
-                    errMsg.setUser(editorVo);
-                    appChatWebSocketHandler.broadcastToAppExceptUser(appId, user.getId(), errMsg);
-                    String errorMessage = "AI 生成代码出错：" + e.getMessage();
-                    chatHistoryService.addChatMessage(appId, errorMessage,
-                            ChatHistoryMessageTypeEnum.AI.getValue(), user.getId());
-                });
+        return streamHandlerExecutor.doExecute(codeStream, appId, streamId, user, taskKey, editorVo,
+                appChatWebSocketHandler, chatHistoryService, aiGenerationTaskManager, codeGenTypeEnum);
     }
 
     @Override
@@ -209,7 +147,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         }
         if (StrUtil.isBlank(app.getCodeGenType())) {
             // 默认多文件生成
-            app.setCodeGenType(CodeGenTypeEnum.MULTI_FILE.getValue());
+            app.setCodeGenType(CodeGenTypeEnum.VUE_PROJECT.getValue());
         }
         app.setCurrentVersion(1);
         app.setPriority(AppConstant.DEFAULT_APP_PRIORITY);
@@ -389,8 +327,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             throw new BusinessException(ErrorCode.NOT_AUTH_ERROR, "无权编辑该应用");
         }
         String memberRole = appMember.getMemberRole();
-        if (!AppMemberRoleEnum.OWNER.getValue().equals(memberRole)
-                && !AppMemberRoleEnum.EDITOR.getValue().equals(memberRole)) {
+        if (!AppMemberRoleEnum.OWNER.getValue().equals(memberRole) && !AppMemberRoleEnum.EDITOR.getValue().equals(memberRole)) {
             throw new BusinessException(ErrorCode.NOT_AUTH_ERROR, "当前成员仅支持只读查看");
         }
     }
@@ -403,10 +340,23 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         return QueryWrapper.create().eq("id", appQueryRequest.getId()).like("appName", appQueryRequest.getAppName()).like("cover", appQueryRequest.getCover()).like("initPrompt", appQueryRequest.getInitPrompt()).eq("codeGenType", appQueryRequest.getCodeGenType()).eq("deployKey", appQueryRequest.getDeployKey()).eq("priority", appQueryRequest.getPriority()).eq("userId", appQueryRequest.getUserId()).orderBy(appQueryRequest.getSortField(), "ascend".equals(appQueryRequest.getSortOrder()));
     }
 
+    /**
+     * 构建生成任务 key
+     *
+     * @param appId  应用 id
+     * @param userId 用户 id
+     * @return 生成任务 key
+     */
     private String buildGenerationTaskKey(Long appId, Long userId) {
         return userId + "_" + appId;
     }
 
+    /**
+     * 校验当前用户是否是当前应用的聊天编辑者
+     *
+     * @param appId 应用 id
+     * @param user  当前用户
+     */
     private void validateChatEditor(Long appId, User user) {
         if (!appChatWebSocketHandler.isChatEditor(appId, user.getId())) {
             throw new BusinessException(ErrorCode.NOT_AUTH_ERROR, "当前未进入对话状态，无法执行该操作");

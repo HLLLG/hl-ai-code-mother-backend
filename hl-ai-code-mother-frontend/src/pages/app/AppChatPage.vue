@@ -381,7 +381,7 @@ const enterChatButtonText = computed(() => {
   return '进入对话'
 })
 const canExitChat = computed(() => {
-  return editingUser.value?.id === loginUserStore.loginUser.id
+  return isSameId(editingUser.value?.id, loginUserStore.loginUser.id)
 })
 const canEditChat = canExitChat
 
@@ -841,6 +841,9 @@ const connectChatSocket = async () => {
     editingUser.value = msg?.user
     if (appInfo.value && msg?.user) {
       appInfo.value = { ...appInfo.value, chatOccupantUser: msg.user }
+    }
+    if (isSameId(msg?.user?.id, loginUserStore.loginUser.id)) {
+      void maybeSendInitialMessage()
     }
   })
 

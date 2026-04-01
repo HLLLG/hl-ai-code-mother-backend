@@ -1,10 +1,10 @@
 package com.hl.hlaicodemother.core;
 
 import cn.hutool.core.util.StrUtil;
-import cn.hutool.json.JSON;
 import cn.hutool.json.JSONUtil;
 import com.hl.hlaicodemother.ai.AiCodeGeneratorService;
 import com.hl.hlaicodemother.ai.AiCodeGeneratorServiceFactory;
+import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.ai.model.HtmlCodeResult;
 import com.hl.hlaicodemother.ai.model.MultiFileCodeResult;
 import com.hl.hlaicodemother.ai.model.message.AiResponseMessage;
@@ -14,22 +14,17 @@ import com.hl.hlaicodemother.core.parser.CodeParserExecutor;
 import com.hl.hlaicodemother.core.saver.CodeFileSaverExecutor;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
-import com.hl.hlaicodemother.exception.ThrowUtils;
 import com.hl.hlaicodemother.model.entity.App;
-import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
-import com.hl.hlaicodemother.service.AppService;
 import com.hl.hlaicodemother.service.AppVersionService;
 import dev.langchain4j.service.TokenStream;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
-import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
+import java.time.Duration;
 
 /**
  * AI 代码生成器门面类
@@ -119,8 +114,9 @@ public class AiCodeGeneratorFacade {
                         taskContext);
             }
             case VUE_PROJECT -> {
+                aiCodeGeneratorServiceFactory.resetGeneration(app.getId());
                 TokenStream vueProjectStream = aiCodeGeneratorService.generateVueProjectStream(app.getId(), userMessage);
-                yield processTokenStream(vueProjectStream, taskKey, taskContext)
+                yield processTokenStream(vueProjectStream, taskKey, taskContext, app.getId())
                         .takeUntilOther(taskContext.getCancelSignal());
             }
             default -> throw new BusinessException(ErrorCode.PARAMS_ERROR,
@@ -157,39 +153,64 @@ public class AiCodeGeneratorFacade {
         }).doFinally(signalType -> aiGenerationTaskManager.removeTask(taskKey, taskContext));
     }
 
+    private static final Duration STREAM_TIMEOUT = Duration.ofMinutes(5);
+
     /**
-     * 将TokenStream转换为Flux<String>, 并传递工具调用信息
-     *
-     * @param tokenStream
-     * @return
+     * 将TokenStream转换为Flux<String>, 并传递工具调用信息。
+     * 通过 sink.onDispose 将 Flux 取消信号桥接到 taskContext 和 FileWriteTool，
+     * 使得 FileWriteTool 抛出异常来中断 langchain4j 的工具调用循环，阻止后续 LLM 请求。
+     * 添加了 STREAM_TIMEOUT 兜底：如果超时未收到任何数据则自动完成流。
      */
     private Flux<String> processTokenStream(TokenStream tokenStream, String taskKey,
-                                            AiGenerationTaskManager.TaskContext taskContext) {
+                                            AiGenerationTaskManager.TaskContext taskContext,
+                                            Long appId) {
         return Flux.<String>create(sink -> {
+            sink.onDispose(() -> {
+                taskContext.cancel();
+                aiCodeGeneratorServiceFactory.cancelGeneration(appId);
+            });
+
             tokenStream.onPartialResponse((partialResponse) -> {
+                        if (taskContext.isCancelled()) return;
                         AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
                         sink.next(JSONUtil.toJsonStr(aiResponseMessage));
                     })
                     .onPartialToolExecutionRequest((index, partialToolExecutionRequest) -> {
+                        if (taskContext.isCancelled()) return;
                         ToolRequestMessage toolRequestMessage = new ToolRequestMessage(partialToolExecutionRequest);
                         sink.next(JSONUtil.toJsonStr(toolRequestMessage));
                     })
                     .onToolExecuted(toolExecution -> {
+                        if (taskContext.isCancelled()) return;
                         ToolExecutedMessage toolExecutionMessage = new ToolExecutedMessage(toolExecution);
                         sink.next(JSONUtil.toJsonStr(toolExecutionMessage));
                     })
                     .onCompleteResponse(completeResponse -> {
+                        log.info("TokenStream onCompleteResponse, taskKey={}", taskKey);
                         if (taskContext.isCancelled()) {
                             log.info("生成已手动停止，跳过保存，taskKey={}", taskKey);
-                            return;
                         }
                         sink.complete();
                     })
                     .onError(error -> {
-                        error.printStackTrace();
+                        if (taskContext.isCancelled()) {
+                            log.info("生成已手动停止，忽略错误，taskKey={}", taskKey);
+                            sink.complete();
+                            return;
+                        }
+                        log.error("TokenStream 生成出错, taskKey={}", taskKey, error);
                         sink.error(error);
                     })
                     .start();
-        }).doFinally(signalType -> aiGenerationTaskManager.removeTask(taskKey, taskContext));
+        })
+        .timeout(STREAM_TIMEOUT)
+        .onErrorResume(java.util.concurrent.TimeoutException.class, e -> {
+            log.warn("TokenStream 超时（{}），强制结束流, taskKey={}", STREAM_TIMEOUT, taskKey);
+            return Flux.empty();
+        })
+        .doFinally(signalType -> {
+            log.info("TokenStream Flux doFinally, signal={}, taskKey={}", signalType, taskKey);
+            aiGenerationTaskManager.removeTask(taskKey, taskContext);
+        });
     }
 }

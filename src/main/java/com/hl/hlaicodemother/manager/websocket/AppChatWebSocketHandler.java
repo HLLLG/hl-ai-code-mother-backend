@@ -9,6 +9,7 @@ import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatResponseMess
 import com.hl.hlaicodemother.model.entity.AppMember;
 import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.enums.AppMemberRoleEnum;
+import com.hl.hlaicodemother.model.vo.UserVO;
 import com.hl.hlaicodemother.service.AppMemberService;
 import com.hl.hlaicodemother.service.UserService;
 import jakarta.annotation.Resource;
@@ -20,6 +21,7 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -74,7 +76,7 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
                 occupantSync.setType(AppChatMessageTypeEnum.ENTER_CHAT.getValue());
                 occupantSync.setMessage(String.format("%s正在协作中", occupant.getUserName()));
                 occupantSync.setUser(userService.getUserVO(occupant));
-                session.sendMessage(new TextMessage(JSONUtil.toJsonStr(occupantSync)));
+                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(occupantSync)));
             }
         }
     }
@@ -82,7 +84,8 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         // 将消息解析为 AppChatRequestMessage
-        AppChatRequestMessage appChatRequestMessage = JSONUtil.toBean(message.getPayload(), AppChatRequestMessage.class);
+        AppChatRequestMessage appChatRequestMessage = JSONUtil.toBean(message.getPayload(),
+                AppChatRequestMessage.class);
         String type = appChatRequestMessage.getType();
         AppChatMessageTypeEnum appChatMessageTypeEnum = AppChatMessageTypeEnum.getByValue(type);
 
@@ -133,6 +136,7 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
 
     /**
      * 处理对话行为
+     *
      * @param session
      * @param appId
      * @param user
@@ -156,6 +160,7 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
 
     /**
      * 处理退出聊天状态
+     *
      * @param session
      * @param appId
      * @param user
@@ -178,13 +183,13 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
 
     /**
      * 处理进入对话
+     *
      * @param session
      * @param appId
      * @param user
      * @throws Exception
      */
-    private void handleEnterChatMessage(WebSocketSession session, Long appId, User user,
-                                        AppMember appMember) throws Exception {
+    private void handleEnterChatMessage(WebSocketSession session, Long appId, User user, AppMember appMember) throws Exception {
         if (!canEnterChat(appMember)) {
             sendErrorMessage(session, "只有应用 owner 和编辑者可以进入对话", user);
             return;
@@ -195,7 +200,7 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
             appChatResponseMessage.setType(AppChatMessageTypeEnum.ENTER_CHAT.getValue());
             appChatResponseMessage.setMessage(String.format("%s已处于聊天状态", user.getUserName()));
             appChatResponseMessage.setUser(userService.getUserVO(user));
-            session.sendMessage(new TextMessage(JSONUtil.toJsonStr(appChatResponseMessage)));
+            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(appChatResponseMessage)));
             return;
         }
         if (chattingUserId != null && !chattingUserId.equals(user.getId())) {
@@ -214,7 +219,7 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
             broadcastToApp(appId, appChatResponseMessage);
         }
     }
-    
+
 
     public boolean isChatEditor(Long appId, Long userId) {
         if (appId == null || userId == null) {
@@ -256,78 +261,72 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
         appChatResponseMessage.setType(AppChatMessageTypeEnum.ERROR.getValue());
         appChatResponseMessage.setMessage(errorMessage);
         appChatResponseMessage.setUser(user == null ? null : userService.getUserVO(user));
-        session.sendMessage(new TextMessage(JSONUtil.toJsonStr(appChatResponseMessage)));
+        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(appChatResponseMessage)));
     }
 
 
     /**
      * 广播应用协作事件(排除指定会话)
+     *
      * @param appId
      * @param appChatResponseMessage
      * @param excludeSession
      * @throws Exception
      */
     private void broadcastToApp(Long appId, AppChatResponseMessage appChatResponseMessage,
-                                WebSocketSession excludeSession) throws Exception {
-        // 获取应用所有会话
-        Set<WebSocketSession> sessionSet = appSessions.get(appId);
-        if (CollUtil.isNotEmpty(sessionSet)) {
-            String message = objectMapper.writeValueAsString(appChatResponseMessage);
-            TextMessage textMessage = new TextMessage(message);
-            // 遍历所有会话
-            for (WebSocketSession session : sessionSet) {
-                // 排除当前会话
-                if (excludeSession != null && excludeSession.equals(session)) {
-                    continue;
-                }
-                if (session.isOpen()) {
-                    session.sendMessage(textMessage);
+                                WebSocketSession excludeSession) {
+        try {
+            // 获取应用所有会话
+            Set<WebSocketSession> sessionSet = appSessions.get(appId);
+            if (CollUtil.isNotEmpty(sessionSet)) {
+                String message = objectMapper.writeValueAsString(appChatResponseMessage);
+                TextMessage textMessage = new TextMessage(message);
+                // 遍历所有会话
+                for (WebSocketSession session : sessionSet) {
+                    // 排除当前会话
+                    if (excludeSession != null && excludeSession.equals(session)) {
+                        continue;
+                    }
+                    if (session.isOpen()) {
+                        session.sendMessage(textMessage);
+                    }
                 }
             }
+        } catch (IOException e) {
+            log.error("广播错误，appId: {}", appId, e);
         }
     }
 
     /**
      * 广播应用协作事件（默认所有会话）
      */
-    private void broadcastToApp(Long appId, AppChatResponseMessage appChatResponseMessage) throws Exception {
+    private void broadcastToApp(Long appId, AppChatResponseMessage appChatResponseMessage){
         broadcastToApp(appId, appChatResponseMessage, null);
     }
 
     /**
      * 向同应用下所有 WebSocket 会话广播，但排除指定用户（用于将 SSE 流镜像给围观成员，避免编辑者多连接重复收流）
      */
-    public void broadcastToAppExceptUser(Long appId, Long excludeUserId, AppChatResponseMessage appChatResponseMessage) {
-        // 参数校验：若应用 ID 或排除的用户 ID 为空，则直接返回
-        if (appId == null || excludeUserId == null) {
-            return;
-        }
-        try {
-            // 获取该应用下的所有 WebSocket 会话
-            Set<WebSocketSession> sessionSet = appSessions.get(appId);
-            if (CollUtil.isEmpty(sessionSet)) {
-                return;
+    public void broadcastToApp(Long appId, User user, String streamId, String phase, String payload,
+                               UserVO editorVo){
+        // 获取该应用下的所有 WebSocket 会话
+        Set<WebSocketSession> sessionSet = appSessions.get(appId);
+        WebSocketSession excludeSession = null;
+        for (WebSocketSession session : sessionSet) {
+            // 从会话属性中获取当前用户信息
+            User u = (User) session.getAttributes().get("user");
+            // 跳过需要排除的用户
+            if (u != null && user.getId().equals(u.getId())) {
+                excludeSession = session;
+                break;
             }
-            // 将响应消息序列化为 JSON 字符串
-            String json = objectMapper.writeValueAsString(appChatResponseMessage);
-            TextMessage textMessage = new TextMessage(json);
-            // 遍历所有会话进行广播
-            for (WebSocketSession session : sessionSet) {
-                // 从会话属性中获取当前用户信息
-                User u = (User) session.getAttributes().get("user");
-                // 跳过需要排除的用户
-                if (u != null && excludeUserId.equals(u.getId())) {
-                    continue;
-                }
-                // 仅向处于打开状态的会话发送消息
-                if (session.isOpen()) {
-                    session.sendMessage(textMessage);
-                }
-            }
-        } catch (Exception e) {
-            // 记录广播失败的警告日志
-            log.warn("broadcastToAppExceptUser failed, appId={}", appId, e);
         }
+        AppChatResponseMessage appChatResponseMessage = new AppChatResponseMessage();
+        appChatResponseMessage.setType(AppChatMessageTypeEnum.CHAT_STREAM.getValue());
+        appChatResponseMessage.setStreamId(streamId);
+        appChatResponseMessage.setStreamPhase(phase);
+        appChatResponseMessage.setStreamPayload(payload);
+        appChatResponseMessage.setUser(editorVo);
+        broadcastToApp(appId, appChatResponseMessage, excludeSession);
     }
-
 }
