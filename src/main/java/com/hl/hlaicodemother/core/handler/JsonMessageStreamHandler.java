@@ -60,6 +60,8 @@ public class JsonMessageStreamHandler {
     Flux<String> handle(Flux<String> originFlux, Long appId, String streamId, User user, String taskKey,
                         UserVO editorVo, AppChatWebSocketHandler appChatWebSocketHandler,
                         ChatHistoryService chatHistoryService, AiGenerationTaskManager aiGenerationTaskManager) {
+        // 在 Flux 组装阶段持有 TaskContext 引用，避免 doFinally 先于 doOnComplete 将其从 map 中移除导致查找不到
+        AiGenerationTaskManager.TaskContext taskContext = aiGenerationTaskManager.getTaskContext(taskKey);
         // 累积 AI 响应的完整内容，用于保存到聊天历史
         StringBuilder chatHistoryBuilder = new StringBuilder();
         // 记录已见过的工具 ID，用于判断是否为首次调用该工具
@@ -76,14 +78,17 @@ public class JsonMessageStreamHandler {
                 .filter(StrUtil::isNotEmpty) // 过滤空字符串
                 // 处理生成完成事件：根据是否被取消发送不同状态，并保存 AI 响应到聊天历史
                 .doOnComplete(() -> {
-                    AiGenerationTaskManager.TaskContext ctx = aiGenerationTaskManager.getTaskContext(taskKey);
-                    boolean cancelled = ctx != null && ctx.isCancelled();
+                    boolean cancelled = taskContext != null && taskContext.isCancelled();
                     if (cancelled) {
                         // 任务被取消，发送停止消息
                         String stopPayLoad = JSONUtil.toJsonStr(Map.of("message", "本次生成已停止。"));
                         appChatWebSocketHandler.broadcastToApp(appId, user, streamId, stopPayLoad,
                                 AppChatStreamPhaseEnum.STOPPED.getValue(), editorVo);
                     } else {
+                        // 异步构造 Vue 项目
+                        int versionCount = (int) appVersionService.count(new QueryWrapper().eq(AppVersion::getAppId, appId));
+                        String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId + "/v" + versionCount;
+                        vueProjectBuilder.buildProjectAsync(projectPath);
                         // 任务正常完成，发送完成消息并提示刷新应用
                         String donePayLoad = JSONUtil.toJsonStr(Map.of("refreshApp", true));
                         appChatWebSocketHandler.broadcastToApp(appId, user, streamId, donePayLoad,
@@ -95,10 +100,6 @@ public class JsonMessageStreamHandler {
                         chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue()
                                 , user.getId());
                     }
-                    // 异步构造 Vue 项目
-                    int versionCount = (int) appVersionService.count(new QueryWrapper().eq(AppVersion::getAppId, appId));
-                    String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId + "/v" + versionCount;
-                    vueProjectBuilder.buildProjectAsync(projectPath);
                 })
                 // 处理生成过程中的异常：记录日志、广播错误消息并保存错误信息到聊天历史
                 .doOnError(e -> {
@@ -132,6 +133,16 @@ public class JsonMessageStreamHandler {
                         AppChatStreamPhaseEnum.CHUNK.getValue(), editorVo);
                 chatHistoryBuilder.append(data);
                 return data;
+            }
+            case THINKING_RESPONSE -> {
+                // 将 chunk 转换为 ThinkingResponseMessage 对象
+                ThinkingResponseMessage thinkingResponseMessage = JSONUtil.toBean(chunk, ThinkingResponseMessage.class);
+                String text = thinkingResponseMessage.getText();
+                String chunkPayLoad = JSONUtil.toJsonStr(Map.of("d", text));
+                appChatWebSocketHandler.broadcastToApp(appId, user, streamId, chunkPayLoad,
+                        AppChatStreamPhaseEnum.CHUNK.getValue(), editorVo);
+                chatHistoryBuilder.append(text);
+                return text;
             }
             case TOOL_REQUEST -> {
                 // 将 chunk 转换为 ToolRequestMessage 对象

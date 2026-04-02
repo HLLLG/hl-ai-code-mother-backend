@@ -8,6 +8,7 @@ import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.ai.model.HtmlCodeResult;
 import com.hl.hlaicodemother.ai.model.MultiFileCodeResult;
 import com.hl.hlaicodemother.ai.model.message.AiResponseMessage;
+import com.hl.hlaicodemother.ai.model.message.ThinkingResponseMessage;
 import com.hl.hlaicodemother.ai.model.message.ToolExecutedMessage;
 import com.hl.hlaicodemother.ai.model.message.ToolRequestMessage;
 import com.hl.hlaicodemother.core.parser.CodeParserExecutor;
@@ -176,6 +177,11 @@ public class AiCodeGeneratorFacade {
                         if (taskContext.isCancelled()) return;
                         AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
                         sink.next(JSONUtil.toJsonStr(aiResponseMessage));
+                    })
+                    .onPartialThinking((partialThinking) -> {
+                        if (taskContext.isCancelled()) return;
+                        ThinkingResponseMessage thinkingResponseMessage = new ThinkingResponseMessage(partialThinking.text());
+                        sink.next(JSONUtil.toJsonStr(thinkingResponseMessage));
                     })
                     .onPartialToolExecutionRequest((index, partialToolExecutionRequest) -> {
                         if (taskContext.isCancelled()) return;

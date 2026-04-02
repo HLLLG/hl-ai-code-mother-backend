@@ -1,7 +1,9 @@
 package dev.langchain4j.service;
 
+import dev.langchain4j.Experimental;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.rag.RetrievalAugmentor;
 import dev.langchain4j.rag.content.Content;
 import dev.langchain4j.service.tool.ToolExecution;
@@ -26,6 +28,11 @@ public interface TokenStream {
      * @return token stream instance used to configure or start stream processing
      */
     TokenStream onPartialResponse(Consumer<String> partialResponseHandler);
+
+    @Experimental
+    default TokenStream onPartialThinking(Consumer<PartialThinking> partialThinkingHandler) {
+        throw new UnsupportedOperationException("not implemented");
+    }
 
     TokenStream onPartialToolExecutionRequest(BiConsumer<Integer, ToolExecutionRequest> toolExecutionRequestHandler);
 

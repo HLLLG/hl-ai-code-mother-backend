@@ -1,5 +1,6 @@
 package dev.langchain4j.model.chat.response;
 
+import dev.langchain4j.Experimental;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
@@ -19,6 +20,19 @@ public interface StreamingChatResponseHandler {
      * @param partialResponse The partial response (usually a single token), which is a part of the complete response.
      */
     void onPartialResponse(String partialResponse);
+
+    /**
+     * Invoked each time the model generates a partial thinking/reasoning text, usually a single token.
+     * <p>
+     * Please note that some LLM providers do not stream individual tokens, but send thinking tokens in batches.
+     * In such cases, this callback may receive multiple tokens at once.
+     *
+     * @param partialThinking A partial thinking text, usually a single token.
+     * @since 1.2.0
+     */
+    @Experimental
+    default void onPartialThinking(PartialThinking partialThinking) {
+    }
 
     /**
      * TODO

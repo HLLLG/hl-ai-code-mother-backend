@@ -12,6 +12,7 @@ import dev.langchain4j.guardrail.OutputGuardrailRequest;
 import dev.langchain4j.memory.ChatMemory;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.output.TokenUsage;
 import dev.langchain4j.service.tool.ToolExecution;
@@ -43,6 +44,7 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
     private final Object methodKey;
 
     private final Consumer<String> partialResponseHandler;
+    private final Consumer<PartialThinking> partialThinkingHandler;
     private final BiConsumer<Integer, ToolExecutionRequest> partialToolExecutionRequestHandler;
     private final BiConsumer<Integer, ToolExecutionRequest> completeToolExecutionRequestHandler;
     private final Consumer<ToolExecution> toolExecutionHandler;
@@ -63,6 +65,7 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
             AiServiceContext context,
             Object memoryId,
             Consumer<String> partialResponseHandler,
+            Consumer<PartialThinking> partialThinkingHandler,
             BiConsumer<Integer, ToolExecutionRequest> partialToolExecutionRequestHandler,
             BiConsumer<Integer, ToolExecutionRequest> completeToolExecutionRequestHandler,
             Consumer<ToolExecution> toolExecutionHandler,
@@ -80,6 +83,7 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
         this.methodKey = methodKey;
 
         this.partialResponseHandler = ensureNotNull(partialResponseHandler, "partialResponseHandler");
+        this.partialThinkingHandler = partialThinkingHandler;
         this.partialToolExecutionRequestHandler = partialToolExecutionRequestHandler;
         this.completeToolExecutionRequestHandler = completeToolExecutionRequestHandler;
         this.completeResponseHandler = completeResponseHandler;
@@ -109,6 +113,13 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
     public void onPartialToolExecutionRequest(int index, ToolExecutionRequest partialToolExecutionRequest) {
         // If we're using output guardrails, then buffer the partial response until the guardrails have completed
         partialToolExecutionRequestHandler.accept(index, partialToolExecutionRequest);
+    }
+
+    @Override
+    public void onPartialThinking(PartialThinking partialThinking) {
+        if (partialThinkingHandler != null) {
+            partialThinkingHandler.accept(partialThinking);
+        }
     }
 
     @Override
@@ -144,6 +155,7 @@ class AiServiceStreamingResponseHandler implements StreamingChatResponseHandler 
                     context,
                     memoryId,
                     partialResponseHandler,
+                    partialThinkingHandler,
                     partialToolExecutionRequestHandler,
                     completeToolExecutionRequestHandler,
                     toolExecutionHandler,
