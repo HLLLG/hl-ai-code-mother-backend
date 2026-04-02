@@ -115,6 +115,8 @@ public class AiCodeGeneratorFacade {
             }
             case VUE_PROJECT -> {
                 aiCodeGeneratorServiceFactory.resetGeneration(app.getId());
+                int vueVersion = appVersionService.addVersion(app, userMessage);
+                aiCodeGeneratorServiceFactory.configureVueOutputVersion(app.getId(), vueVersion);
                 TokenStream vueProjectStream = aiCodeGeneratorService.generateVueProjectStream(app.getId(), userMessage);
                 yield processTokenStream(vueProjectStream, taskKey, taskContext, app.getId())
                         .takeUntilOther(taskContext.getCancelSignal());

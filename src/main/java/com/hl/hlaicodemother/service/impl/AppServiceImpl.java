@@ -14,8 +14,6 @@ import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.exception.ThrowUtils;
 import com.hl.hlaicodemother.manager.websocket.AppChatWebSocketHandler;
-import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatMessageTypeEnum;
-import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatResponseMessage;
 import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatStreamPhaseEnum;
 import com.hl.hlaicodemother.mapper.AppMapper;
 import com.hl.hlaicodemother.model.dto.app.AppAddRequest;
@@ -41,7 +39,6 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
-import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
 import java.io.Serializable;

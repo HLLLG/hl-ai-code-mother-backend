@@ -12,6 +12,7 @@ import java.nio.file.Paths;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 文件写入工具类，通过构造函数绑定 appId，避免将 appId 暴露为工具参数
@@ -24,10 +25,21 @@ public class FileWriteTool {
     private static final int MAX_FILE_COUNT = 30;
     private static final int MAX_REJECT_COUNT = 3;
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
+    /** 未设置时为 0，须在每轮生成前通过 {@link #prepareForGeneration(int)} 写入 */
+    private final AtomicInteger outputVersion = new AtomicInteger(0);
     private int consecutiveRejectCount = 0;
 
     public FileWriteTool(Long appId) {
         this.appId = appId;
+    }
+
+    /**
+     * 新一轮生成前调用：清空已写文件记录、设置本次版本号（目录为 vue_project_{appId}/v{n}/）
+     */
+    public void prepareForGeneration(int version) {
+        writtenFiles.clear();
+        consecutiveRejectCount = 0;
+        outputVersion.set(version);
     }
 
     public void setCancelled(boolean value) {
@@ -71,8 +83,12 @@ public class FileWriteTool {
         try {
             String pathStr = relativeFilePath;
             if (!Paths.get(pathStr).isAbsolute()) {
-                String projectDirName = "vue_project_" + appId;
-                String projectRoot = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + projectDirName;
+                int ver = outputVersion.get();
+                if (ver <= 0) {
+                    throw new RuntimeException("内部错误：未设置 Vue 工程输出版本号，无法写入文件");
+                }
+                String projectRoot = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + "vue_project_" + appId
+                        + File.separator + "v" + ver;
                 pathStr = FileUtil.normalize(projectRoot + File.separator + relativeFilePath);
             }
             Path path = Paths.get(pathStr);

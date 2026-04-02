@@ -119,14 +119,14 @@ public class JsonMessageStreamHandler {
                 // 将 chunk 转换为 ToolRequestMessage 对象
                 ToolRequestMessage toolRequestMessage = JSONUtil.toBean(chunk, ToolRequestMessage.class);
                 String id = toolRequestMessage.getId();
+                String name = toolRequestMessage.getName();
                 // 检查是否是第一次调用工具
                 if (id != null && !seenTollIds.contains(id)) {
                     seenTollIds.add(id);
                     String chunkPayLoad = JSONUtil.toJsonStr(Map.of("d", "\n\n[选择工具] 写入文件\n\n"));
-
                     appChatWebSocketHandler.broadcastToApp(appId, user, streamId, chunkPayLoad,
                             AppChatStreamPhaseEnum.CHUNK.getValue(), editorVo);
-                    return "\n\n[选择工具] 写入文件\n\n";
+                    return "\n\n[🔧选择工具] " +  name + "\n\n";
                 } else {
                     return "";
                 }
@@ -139,7 +139,7 @@ public class JsonMessageStreamHandler {
                 String suffix = FileUtil.getSuffix(relativeFilePath);
                 String content = jsonObject.getStr("content");
                 String result = String.format("""
-                        [工具调用] 写入文件 %s
+                        [🔧工具调用] 写入文件 %s
                         ```%s
                         %s
                         ```

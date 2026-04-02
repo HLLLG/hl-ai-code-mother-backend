@@ -149,6 +149,17 @@ public class AiCodeGeneratorServiceFactory {
     }
 
     /**
+     * 设置 Vue 工具写入目录版本（vue_project_{appId}/v{n}/），并清空本轮已写文件记录。
+     * 须在 {@link #resetGeneration(Long)} 之后、启动 TokenStream 之前调用。
+     */
+    public void configureVueOutputVersion(long appId, int version) {
+        FileWriteTool tool = fileWriteToolMap.get(appId);
+        if (tool != null) {
+            tool.prepareForGeneration(version);
+        }
+    }
+
+    /**
      * 重置指定 appId 的取消状态，在新一轮生成前调用
      */
     public void resetGeneration(Long appId) {
