@@ -13,13 +13,13 @@ export const getAppStaticPreviewUrl = (app?: API.AppVO) => {
   return getStaticPreviewUrl(app.codeGenType, String(app.id), String(app.currentVersion || 1))
 }
 
-export const getAppDeployPreviewUrl = (deployKey?: string) => {
+export const getAppDeployPreviewUrl = (deployKey?: string, version?: number) => {
   if (!deployKey) {
     return ''
   }
 
   // 部署地址与静态资源预览地址不同，这里严格走部署域名。
-  return getDeployUrl(deployKey)
+  return getDeployUrl(deployKey, version)
 }
 
 export const formatDateTime = (dateTime?: string) => {

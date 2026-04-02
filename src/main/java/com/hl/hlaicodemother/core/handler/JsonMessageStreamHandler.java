@@ -6,12 +6,20 @@ import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.ai.model.message.*;
+import com.hl.hlaicodemother.constant.AppConstant;
+import com.hl.hlaicodemother.core.builder.VueProjectBuilder;
 import com.hl.hlaicodemother.manager.websocket.AppChatWebSocketHandler;
 import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatStreamPhaseEnum;
+import com.hl.hlaicodemother.model.entity.App;
+import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.enums.ChatHistoryMessageTypeEnum;
 import com.hl.hlaicodemother.model.vo.UserVO;
+import com.hl.hlaicodemother.service.AppService;
+import com.hl.hlaicodemother.service.AppVersionService;
 import com.hl.hlaicodemother.service.ChatHistoryService;
+import com.mybatisflex.core.query.QueryWrapper;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
@@ -28,7 +36,13 @@ import java.util.Set;
 @Component
 public class JsonMessageStreamHandler {
 
-        /**
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
+
+    @Resource
+    private AppVersionService appVersionService;
+
+    /**
      * 处理 AI 生成的 JSON 消息流，将原始 Flux 流转换为处理后的字符串流
      * 主要功能包括：解析 JSON 消息块、广播给围观成员、保存聊天历史、处理完成/取消/异常事件
      *
@@ -81,6 +95,10 @@ public class JsonMessageStreamHandler {
                         chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue()
                                 , user.getId());
                     }
+                    // 异步构造 Vue 项目
+                    int versionCount = (int) appVersionService.count(new QueryWrapper().eq(AppVersion::getAppId, appId));
+                    String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId + "/v" + versionCount;
+                    vueProjectBuilder.buildProjectAsync(projectPath);
                 })
                 // 处理生成过程中的异常：记录日志、广播错误消息并保存错误信息到聊天历史
                 .doOnError(e -> {

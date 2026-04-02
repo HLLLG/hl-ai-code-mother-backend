@@ -9,6 +9,7 @@ import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.constant.UserConstant;
 import com.hl.hlaicodemother.core.AiCodeGeneratorFacade;
+import com.hl.hlaicodemother.core.builder.VueProjectBuilder;
 import com.hl.hlaicodemother.core.handler.StreamHandlerExecutor;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
@@ -76,6 +77,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private StreamHandlerExecutor streamHandlerExecutor;
+
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
 
 
     /**
@@ -176,16 +180,29 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         // 获取应用生成类型
         String codeGenType = app.getCodeGenType();
         // 检查应用生成目录是否存在
-        String sourceDirName = codeGenType + "_" + appId + "_v" + app.getCurrentVersion();
+        String sourceDirName = codeGenType + "_" + appId + "/v" + app.getCurrentVersion();
         String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName;
         File sourceDir = new File(sourceDirPath);
         if (!sourceDir.exists() || !sourceDir.isDirectory()) {
             // 不存在则提示先生成代码
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "应用生成目录不存在，请先生成代码");
         }
+        // vue 项目特殊处理：执行构建
+        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
+        if (codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT) {
+            // 构建
+            boolean buildResult = vueProjectBuilder.buildVueProject(sourceDirPath);
+            ThrowUtils.throwIf(!buildResult, ErrorCode.SYSTEM_ERROR, "Vue 项目构建失败，请检查代码和依赖");
+            // 检查 dist 目录是否存在
+            File distDir = new File(sourceDir, "dist");
+            ThrowUtils.throwIf(!distDir.exists() || !distDir.isDirectory(), ErrorCode.PARAMS_ERROR, "应用生成目录不存在 dist 目录");
+            // 将dist 目录复制到 deploy 目录
+            sourceDir = distDir;
+            log.info("Vue 项目构建成功, 将部署 dis 目录：{}", distDir.getAbsolutePath());
+        }
         // 部署应用
         String deployDirPath =
-                AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey + "_v" + app.getCurrentVersion();
+                AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey + "/v" + app.getCurrentVersion();
         FileUtil.copyContent(sourceDir, new File(deployDirPath), true);
         // 更新应用的deployKey和部署时间
         App updateApp = new App();
@@ -195,7 +212,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
         // 返回部署访问地址
-        return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey + "_v" + app.getCurrentVersion());
+        return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey + "/v" + app.getCurrentVersion());
     }
 
     @Override

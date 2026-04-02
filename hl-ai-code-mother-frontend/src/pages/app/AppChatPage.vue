@@ -191,16 +191,16 @@
           </div>
         </div>
         <div class="preview-content">
-          <div v-if="!previewUrl && !isGenerating && !observerRemoteGenerating" class="preview-placeholder">
-            <div class="placeholder-icon">🌐</div>
-            <p>网站文件生成完成后将在这里展示</p>
-          </div>
-          <div v-else-if="(isGenerating || observerRemoteGenerating) && !previewUrl" class="preview-loading">
+          <div v-if="isGenerating || observerRemoteGenerating" class="preview-loading">
             <a-spin size="large" />
             <p>正在生成网站...</p>
           </div>
+          <div v-else-if="!previewUrl" class="preview-placeholder">
+            <div class="placeholder-icon">🌐</div>
+            <p>网站文件生成完成后将在这里展示</p>
+          </div>
           <iframe
-            v-else-if="previewUrl"
+            v-else
             :key="previewUrl"
             :src="previewUrl"
             class="preview-iframe"

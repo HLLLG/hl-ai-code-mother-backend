@@ -68,7 +68,7 @@ const visible = computed({
 })
 
 const deployUrl = computed(() => {
-  return getAppDeployPreviewUrl(props.app?.deployKey)
+  return getAppDeployPreviewUrl(props.app?.deployKey, props.app?.currentVersion)
 })
 
 const openDeployPage = () => {

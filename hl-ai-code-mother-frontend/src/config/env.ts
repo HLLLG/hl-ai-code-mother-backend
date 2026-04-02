@@ -31,8 +31,8 @@ export const WS_BASE_URL = resolveWsBaseUrl()
 export const STATIC_BASE_URL = `${API_BASE_URL}/static`
 
 // 获取部署应用的完整URL
-export const getDeployUrl = (deployKey: string) => {
-  return `${DEPLOY_DOMAIN}/${deployKey}`
+export const getDeployUrl = (deployKey: string, version: number) => {
+  return `${DEPLOY_DOMAIN}/${deployKey}/v${version}/`
 }
 
 // 获取静态资源预览URL
