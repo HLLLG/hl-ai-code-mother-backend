@@ -30,6 +30,7 @@ import com.hl.hlaicodemother.model.vo.AppVO;
 import com.hl.hlaicodemother.model.vo.UserVO;
 import com.hl.hlaicodemother.service.AppMemberService;
 import com.hl.hlaicodemother.service.AppService;
+import com.hl.hlaicodemother.service.ScreenshotService;
 import com.hl.hlaicodemother.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
@@ -80,6 +81,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private VueProjectBuilder vueProjectBuilder;
+
+    @Resource
+    private ScreenshotService screenshotService;
 
 
     /**
@@ -212,7 +216,23 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
         // 返回部署访问地址
-        return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey + "/v" + app.getCurrentVersion());
+        String deployUrl = String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey + "/v" + app.getCurrentVersion());
+        generateAppScreenshotAsync(appId, deployUrl);
+        return deployUrl;
+    }
+
+    @Override
+    public void generateAppScreenshotAsync(Long appId, String appDeployUrl) {
+        Thread.startVirtualThread(() -> {
+            // 调用截图服务并上传
+            String cosUrl = screenshotService.generateAndUploadScreenshot(appDeployUrl);
+            // 更新应用封面
+            App updateApp = new App();
+            updateApp.setCover(cosUrl);
+            updateApp.setId(appId);
+            boolean updateResult = this.updateById(updateApp);
+            ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用封面失败");
+        });
     }
 
     @Override
