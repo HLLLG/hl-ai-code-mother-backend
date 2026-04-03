@@ -9,6 +9,7 @@ import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.ChatRequestParameters;
 import dev.langchain4j.model.chat.request.DefaultChatRequestParameters;
 import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.PartialThinking;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 
 import java.util.List;
@@ -48,6 +49,11 @@ public interface StreamingChatModel {
             @Override
             public void onPartialResponse(String partialResponse) {
                 handler.onPartialResponse(partialResponse);
+            }
+
+            @Override
+            public void onPartialThinking(PartialThinking partialThinking) {
+                handler.onPartialThinking(partialThinking);
             }
 
             @Override
