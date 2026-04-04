@@ -115,4 +115,11 @@ public interface AppService extends IService<App> {
      */
     QueryWrapper getQueryWrapper(AppQueryRequest appQueryRequest);
 
+    /**
+     * 应用代码下载次数 +1（原子更新）
+     *
+     * @param app 应用 id
+     */
+    void incrementDownloadCount(App app);
+
 }

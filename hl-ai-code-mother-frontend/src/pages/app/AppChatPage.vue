@@ -4,6 +4,9 @@
     <div class="header-bar">
       <div class="header-left">
         <h1 class="app-name">{{ appInfo?.appName || '网站生成器' }}</h1>
+        <a-tag v-if="appInfo?.codeGenType" color="blue" class="code-gen-type-tag">
+          {{ formatCodeGenType(appInfo.codeGenType) }}
+        </a-tag>
       </div>
       <div class="header-right">
         <a-select
@@ -15,12 +18,7 @@
           :loading="switchingVersion"
           @change="handleVersionChange"
         />
-        <a-button
-          v-if="canEditChat"
-          danger
-          @click="leaveChatSession"
-          :disabled="!canExitChat"
-        >
+        <a-button v-if="canEditChat" danger @click="leaveChatSession" :disabled="!canExitChat">
           退出对话
         </a-button>
         <a-button
@@ -55,6 +53,31 @@
           刷新对话
         </a-button>
         <a-button
+          type="primary"
+          ghost
+          @click="downloadCode"
+          :loading="downloading"
+          :disabled="!isOwner || previewUrl === null || isGenerating"
+        >
+          <template #icon>
+            <DownloadOutlined />
+          </template>
+          下载代码<span v-if="formattedCodeDownloadCount" class="code-download-count"
+            >（{{ formattedCodeDownloadCount }}）</span
+          >
+        </a-button>
+        <a-button
+          v-if="appInfo?.deployKey"
+          type="primary"
+          @click="openExistingDeployment"
+        >
+          <template #icon>
+            <LinkOutlined />
+          </template>
+          查看部署
+        </a-button>
+        <a-button
+          v-else
           type="primary"
           @click="deployApp"
           :loading="deploying"
@@ -239,22 +262,24 @@ import {
   deployApp as deployAppApi,
   deleteApp as deleteAppApi,
   getAppVersionCount,
+  getDownloadCountByApp,
   stopChatToGenCode,
   updateAppVersion,
 } from '@/api/appController'
 import { downloadChatHistoryMd, listChatHistory } from '@/api/chatHistoryController'
-import { CodeGenTypeEnum } from '@/utils/codeGenTypes'
+import { CodeGenTypeEnum, formatCodeGenType } from '@/utils/codeGenTypes'
 import request from '@/request'
 
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import AppDetailModal from '@/components/AppDetailModal.vue'
 import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
 import logo from '@/assets/logo.png'
-import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
+import { API_BASE_URL, getDeployUrl, getStaticPreviewUrl } from '@/config/env'
 
 import {
   CloudUploadOutlined,
   DownloadOutlined,
+  LinkOutlined,
   SendOutlined,
   ExportOutlined,
   InfoCircleOutlined,
@@ -341,6 +366,70 @@ const deploying = ref(false)
 const exportingChatHistory = ref(false)
 const deployModalVisible = ref(false)
 const deployUrl = ref('')
+
+// 下载相关
+const downloading = ref(false)
+const codeDownloadCount = ref<number | null>(null)
+
+const formatCodeDownloadCount = (count: number) => {
+  const n = Math.max(0, Math.floor(count))
+  if (n < 1000) {
+    return String(n)
+  }
+  const k = n / 1000
+  if (k >= 10) {
+    return `${Math.round(k)}k`
+  }
+  const rounded = Math.round(k * 10) / 10
+  const base = rounded % 1 === 0 ? String(rounded) : rounded.toFixed(1)
+  return `${base}k`
+}
+
+const formattedCodeDownloadCount = computed(() => {
+  if (codeDownloadCount.value === null) {
+    return ''
+  }
+  return formatCodeDownloadCount(codeDownloadCount.value)
+})
+
+// 下载代码
+const downloadCode = async () => {
+  if (!appId.value) {
+    message.error('应用ID不存在')
+    return
+  }
+  downloading.value = true
+  try {
+    const API_BASE_URL = request.defaults.baseURL || ''
+    const url = `${API_BASE_URL}/app/download/${appId.value}`
+    const response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+    })
+    if (!response.ok) {
+      throw new Error(`下载失败: ${response.status}`)
+    }
+    // 获取文件名
+    const contentDisposition = response.headers.get('Content-Disposition')
+    const fileName = contentDisposition?.match(/filename="(.+)"/)?.[1] || `app-${appId.value}.zip`
+    // 下载文件
+    const blob = await response.blob()
+    const downloadUrl = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = downloadUrl
+    link.download = fileName
+    link.click()
+    // 清理
+    URL.revokeObjectURL(downloadUrl)
+    message.success('代码下载成功')
+    await fetchCodeDownloadCount()
+  } catch (error) {
+    console.error('下载失败：', error)
+    message.error('下载失败，请重试')
+  } finally {
+    downloading.value = false
+  }
+}
 
 // 权限相关
 const isOwner = computed(() => {
@@ -503,6 +592,22 @@ const fetchVersionCount = async () => {
   }
 }
 
+const fetchCodeDownloadCount = async () => {
+  if (!appId.value) {
+    return
+  }
+  try {
+    const res = await getDownloadCountByApp({
+      appId: getApiAppId(),
+    })
+    if (res.data.code === 0) {
+      codeDownloadCount.value = res.data.data ?? 0
+    }
+  } catch (error) {
+    console.error('获取代码下载次数失败：', error)
+  }
+}
+
 const fetchChatHistory = async (cursor?: string) => {
   if (!appId.value) {
     return [] as API.ChatHistoryVO[]
@@ -625,6 +730,7 @@ const scheduleCollaborationStreamRefresh = () => {
     const fetched = await fetchAppInfo()
     if (fetched) {
       await fetchVersionCount()
+      await fetchCodeDownloadCount()
       await loadInitialHistory()
       updatePreview()
     }
@@ -768,6 +874,7 @@ const refreshConversation = async (shouldNotify = true) => {
     return
   }
   await fetchVersionCount()
+  await fetchCodeDownloadCount()
   await loadInitialHistory()
   updatePreview()
   if (shouldNotify) {
@@ -1065,6 +1172,7 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
         const fetched = await fetchAppInfo()
         if (fetched) {
           await fetchVersionCount()
+          await fetchCodeDownloadCount()
           await loadInitialHistory()
           updatePreview()
         }
@@ -1298,6 +1406,15 @@ const deployApp = async () => {
       deployUrl.value = res.data.data
       deployModalVisible.value = true
       message.success('部署成功')
+      try {
+        const refreshed = await getAppVoById({ id: getApiAppId() })
+        if (refreshed.data.code === 0 && refreshed.data.data) {
+          appInfo.value = refreshed.data.data
+          syncVersionState()
+        }
+      } catch {
+        /* 部署已成功，忽略刷新应用信息失败 */
+      }
     } else {
       message.error('部署失败：' + res.data.message)
     }
@@ -1319,6 +1436,15 @@ const openDeployedSite = () => {
   if (deployUrl.value) {
     window.open(deployUrl.value, '_blank')
   }
+}
+
+const openExistingDeployment = () => {
+  const key = appInfo.value?.deployKey
+  if (!key) {
+    return
+  }
+  const version = Number(appInfo.value?.currentVersion) || 1
+  window.open(getDeployUrl(key, version), '_blank')
 }
 
 const editApp = () => {
@@ -1412,6 +1538,7 @@ onMounted(async () => {
     return
   }
   await fetchVersionCount()
+  await fetchCodeDownloadCount()
   await loadInitialHistory()
   // 协作占用与是否可发首条消息由 WebSocket（ENTER_CHAT / 连接时占用者同步）决定
   await connectChatSocket()
@@ -1795,6 +1922,10 @@ onBeforeUnmount(() => {
 
 .preview-loading p {
   margin-top: 16px;
+}
+
+.code-gen-type-tag {
+  font-size: 12px;
 }
 
 .preview-iframe {

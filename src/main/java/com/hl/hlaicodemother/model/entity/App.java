@@ -88,7 +88,14 @@ public class App implements Serializable {
     /**
      * 优先级
      */
+    @Column("priority")
     private Integer priority;
+
+    /**
+     * 代码下载次数
+     */
+    @Column("downloadCount")
+    private Integer downloadCount;
 
     /**
      * 创建用户id

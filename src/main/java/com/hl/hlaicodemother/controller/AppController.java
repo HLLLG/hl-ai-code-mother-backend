@@ -20,14 +20,12 @@ import com.hl.hlaicodemother.model.entity.AppMember;
 import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.vo.AppVO;
-import com.hl.hlaicodemother.service.AppMemberService;
-import com.hl.hlaicodemother.service.AppService;
-import com.hl.hlaicodemother.service.AppVersionService;
-import com.hl.hlaicodemother.service.UserService;
+import com.hl.hlaicodemother.service.*;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.BeanUtils;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -35,6 +33,7 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.io.File;
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -51,8 +50,6 @@ import java.util.stream.Collectors;
 @RequestMapping("/app")
 public class AppController {
 
-    private static final long USER_PAGE_MAX_SIZE = 20;
-
     @Resource
     private AppService appService;
 
@@ -68,16 +65,20 @@ public class AppController {
     @Resource
     private AppChatWebSocketHandler appChatWebSocketHandler;
 
+    @Resource
+    private ProjectDownLoadService projectDownLoadService;
+
 
     /**
      * 与AI模型对话，生成代码
+     *
      * @param appId
      * @param message
      * @param request
      * @return
      */
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,@RequestParam String message,
+    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId, @RequestParam String message,
                                                        HttpServletRequest request) {
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "用户输入不能为空");
@@ -108,7 +109,7 @@ public class AppController {
     /**
      * 手动停止 AI 生成代码
      *
-     * @param appId 应用 id
+     * @param appId   应用 id
      * @param request 请求
      * @return 是否已发送停止信号
      */
@@ -122,6 +123,7 @@ public class AppController {
 
     /**
      * 部署应用
+     *
      * @param appId
      * @param request
      * @return
@@ -134,6 +136,25 @@ public class AppController {
         // 调用服务层方法，部署应用
         String deployUrl = appService.deployApp(appId, loginUser);
         return ResultUtils.success(deployUrl);
+    }
+
+    @GetMapping("/download/{appId}")
+    public void downloadAppCode(@PathVariable Long appId, HttpServletRequest request, HttpServletResponse response) {
+        // 参数校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR);
+        App app = appService.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        User loginUser = userService.getLoginUser(request);
+        appService.checkAppOwner(app, loginUser);
+        String codeGenType = app.getCodeGenType();
+
+        String projectDirPath =
+                AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + codeGenType + "_" + appId + "/v" + app.getCurrentVersion();
+        File file = new File(projectDirPath);
+        ThrowUtils.throwIf(!file.exists() || !file.isDirectory(), ErrorCode.NOT_FOUND_ERROR, "应用代码不存在，请先生成应用");
+        appService.incrementDownloadCount(app);
+        String downloadFileName = appId.toString();
+        projectDownLoadService.downloadProjectAsZip(projectDirPath, downloadFileName, response);
     }
 
     /**
@@ -411,13 +432,26 @@ public class AppController {
      * @return 应用详情
      */
     @GetMapping("/admin/get/vo")
-    public BaseResponse<AppVO> getAppByIdByAdmin(Long id) {
+    public BaseResponse<AppVO> getAppByIdByAdmin(@RequestParam Long id) {
         ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
         // 查询数据库
         App app = appService.getById(id);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
         // 获取封装类（包含用户信息）
         return ResultUtils.success(appService.getAppVO(app));
+    }
+
+    /**
+     * 获取app下载次数
+     * @param appId
+     * @return
+     */
+    @GetMapping("/get/app/download")
+    public BaseResponse<Integer> getDownloadCountByApp(@RequestParam Long appId) {
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR);
+        // 查询数据库
+        App app = appService.getById(appId);
+        return ResultUtils.success(app.getDownloadCount());
     }
 
     /**

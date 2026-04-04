@@ -107,3 +107,7 @@ create table if not exists app_member
     index idx_appId_status (appId, memberStatus),
     index idx_appId_role (appId, memberRole)
 ) comment '应用成员表' collate = utf8mb4_unicode_ci;
+
+-- 应用表：代码下载次数
+alter table app
+    add column downloadCount int default 0 not null comment '代码下载次数' after priority;

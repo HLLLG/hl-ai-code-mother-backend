@@ -2,6 +2,7 @@ package com.hl.hlaicodemother.bizmq;
 
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.hl.hlaicodemother.bizmq.model.ScreenshotTaskMessage;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.exception.ThrowUtils;
 import com.hl.hlaicodemother.model.entity.App;

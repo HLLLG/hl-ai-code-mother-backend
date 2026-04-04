@@ -55,7 +55,7 @@ public abstract class CodeFileSaverTemplate<T> {
     protected  String buildUniqueDirPath(Long appId, int version) {
         ThrowUtils.throwIf(appId == null, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
         String bizType = getCodeType().getValue();
-        String uniqueDirPath = StrUtil.format("{}_{}_v{}", bizType, appId, version);
+        String uniqueDirPath = StrUtil.format("{}_{}/v{}", bizType, appId, version);
         String dirPath = FILE_SAVE_ROOT_DIR + File.separator + uniqueDirPath;
         // 创建目录
         if (!new File(dirPath).exists()) {

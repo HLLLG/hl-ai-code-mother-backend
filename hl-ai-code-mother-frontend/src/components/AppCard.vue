@@ -52,6 +52,7 @@
         <div class="author-subtitle">
           <span>{{ authorNameText }}</span>
           <span>{{ formatDateTime(app.createTime) }}</span>
+          <span class="download-count">下载 {{ app.downloadCount ?? 0 }} 次</span>
         </div>
       </div>
     </div>

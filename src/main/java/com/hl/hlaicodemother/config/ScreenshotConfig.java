@@ -1,7 +1,7 @@
 package com.hl.hlaicodemother.config;
 
 import com.hl.hlaicodemother.bizmq.ScreenshotMessageProducer;
-import com.hl.hlaicodemother.bizmq.ScreenshotTaskMessage;
+import com.hl.hlaicodemother.bizmq.model.ScreenshotTaskMessage;
 import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.model.entity.App;
 import com.hl.hlaicodemother.service.AppService;

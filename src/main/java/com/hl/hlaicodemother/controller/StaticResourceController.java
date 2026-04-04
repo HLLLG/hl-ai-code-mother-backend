@@ -26,14 +26,15 @@ public class StaticResourceController {
      * 提供静态资源访问，支持目录重定向
      * 访问格式：http://localhost:8123/api/static/{deployKey}[/{fileName}]
      */
-    @GetMapping("/{deployKey}/**")
+    @GetMapping("/{deployKey}/v{version}/**")
     public ResponseEntity<Resource> serveStaticResource(
             @PathVariable String deployKey,
+            @PathVariable int version,
             HttpServletRequest request) {
         try {
             // 获取资源路径
             String resourcePath = (String) request.getAttribute(HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE);
-            resourcePath = resourcePath.substring(("/static/" + deployKey).length());
+            resourcePath = resourcePath.substring(("/static/" + deployKey + "/v" + version).length());
             // 如果是目录访问（不带斜杠），重定向到带斜杠的URL
             if (resourcePath.isEmpty()) {
                 HttpHeaders headers = new HttpHeaders();
@@ -45,7 +46,7 @@ public class StaticResourceController {
                 resourcePath = "/index.html";
             }
             // 构建文件路径
-            String filePath = PREVIEW_ROOT_DIR + "/" + deployKey + resourcePath;
+            String filePath = PREVIEW_ROOT_DIR + "/" + deployKey + "/v" + version + resourcePath;
             File file = new File(filePath);
             // 检查文件是否存在
             if (!file.exists()) {

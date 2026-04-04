@@ -1,6 +1,7 @@
 package com.hl.hlaicodemother.bizmq;
 
 import cn.hutool.json.JSONUtil;
+import com.hl.hlaicodemother.bizmq.model.ScreenshotTaskMessage;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;

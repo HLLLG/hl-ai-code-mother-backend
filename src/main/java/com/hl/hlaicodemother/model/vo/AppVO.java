@@ -63,6 +63,11 @@ public class AppVO implements Serializable {
     private Integer priority;
 
     /**
+     * 代码下载次数
+     */
+    private Integer downloadCount;
+
+    /**
      * 创建用户id
      */
     private Long userId;

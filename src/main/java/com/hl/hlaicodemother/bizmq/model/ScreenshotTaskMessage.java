@@ -1,4 +1,4 @@
-package com.hl.hlaicodemother.bizmq;
+package com.hl.hlaicodemother.bizmq.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

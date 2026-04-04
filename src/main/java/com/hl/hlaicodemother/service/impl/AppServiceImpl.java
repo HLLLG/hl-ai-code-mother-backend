@@ -5,9 +5,10 @@ import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.hl.hlaicodemother.ai.AiCodeGenTypeRoutingService;
 import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.bizmq.ScreenshotMessageProducer;
-import com.hl.hlaicodemother.bizmq.ScreenshotTaskMessage;
+import com.hl.hlaicodemother.bizmq.model.ScreenshotTaskMessage;
 import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.constant.UserConstant;
 import com.hl.hlaicodemother.core.AiCodeGeneratorFacade;
@@ -34,6 +35,7 @@ import com.hl.hlaicodemother.service.AppMemberService;
 import com.hl.hlaicodemother.service.AppService;
 import com.hl.hlaicodemother.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
+import com.mybatisflex.core.update.UpdateChain;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -85,6 +87,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private ScreenshotMessageProducer screenshotMessageProducer;
+
+    @Resource
+    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
 
 
     /**
@@ -144,6 +149,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long addApp(AppAddRequest appAddRequest, User loginUser) {
+        String initPrompt = appAddRequest.getInitPrompt();
+        ThrowUtils.throwIf(StrUtil.isBlank(initPrompt), ErrorCode.PARAMS_ERROR, "初始化提示不能为空");
         // 构造入库对象
         App app = new App();
         BeanUtils.copyProperties(appAddRequest, app);
@@ -151,10 +158,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (StrUtil.isBlank(app.getAppName())) {
             app.setAppName(StrUtil.sub(appAddRequest.getInitPrompt(), 0, 12));
         }
-        if (StrUtil.isBlank(app.getCodeGenType())) {
-            // 默认多文件生成
-            app.setCodeGenType(CodeGenTypeEnum.VUE_PROJECT.getValue());
-        }
+        CodeGenTypeEnum codeGenTypeEnum = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
+        app.setCodeGenType(codeGenTypeEnum.getValue());
         app.setCurrentVersion(1);
         app.setPriority(AppConstant.DEFAULT_APP_PRIORITY);
         app.setUserId(loginUser.getId());
@@ -200,14 +205,15 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             ThrowUtils.throwIf(!buildResult, ErrorCode.SYSTEM_ERROR, "Vue 项目构建失败，请检查代码和依赖");
             // 检查 dist 目录是否存在
             File distDir = new File(sourceDir, "dist");
-            ThrowUtils.throwIf(!distDir.exists() || !distDir.isDirectory(), ErrorCode.PARAMS_ERROR, "应用生成目录不存在 dist 目录");
+            ThrowUtils.throwIf(!distDir.exists() || !distDir.isDirectory(), ErrorCode.PARAMS_ERROR,
+                    "应用生成目录不存在 dist " + "目录");
             // 将dist 目录复制到 deploy 目录
             sourceDir = distDir;
             log.info("Vue 项目构建成功, 将部署 dis 目录：{}", distDir.getAbsolutePath());
         }
         // 部署应用
         String deployDirPath =
-                AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey + "/v" + app.getCurrentVersion();
+                AppConstant.CODE_DEPLOY_ROOT_DIR + "/" + deployKey + "/v" + app.getCurrentVersion();
         FileUtil.copyContent(sourceDir, new File(deployDirPath), true);
         // 更新应用的deployKey和部署时间
         App updateApp = new App();
@@ -217,8 +223,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
         // 返回部署访问地址
-        String deployUrl = String.format("%s/%s/v%s/", AppConstant.CODE_DEPLOY_HOST,
-                app.getDeployKey(), app.getCurrentVersion());
+        String deployUrl = String.format("%s/%s/v%s/", AppConstant.CODE_DEPLOY_HOST, app.getDeployKey(),
+                app.getCurrentVersion());
         ;
         generateAppScreenshotAsync(appId, deployUrl);
         return deployUrl;
@@ -366,6 +372,16 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "查询请求不能为空");
         }
         return QueryWrapper.create().eq("id", appQueryRequest.getId()).like("appName", appQueryRequest.getAppName()).like("cover", appQueryRequest.getCover()).like("initPrompt", appQueryRequest.getInitPrompt()).eq("codeGenType", appQueryRequest.getCodeGenType()).eq("deployKey", appQueryRequest.getDeployKey()).eq("priority", appQueryRequest.getPriority()).eq("userId", appQueryRequest.getUserId()).orderBy(appQueryRequest.getSortField(), "ascend".equals(appQueryRequest.getSortOrder()));
+    }
+
+    @Override
+    public void incrementDownloadCount(App app) {
+        ThrowUtils.throwIf(app == null, ErrorCode.PARAMS_ERROR, "应用不存在");
+        App updateApp = new App();
+        updateApp.setId(app.getId());
+        updateApp.setDownloadCount(app.getDownloadCount() + 1);
+        boolean updated = this.updateById(updateApp);
+        ThrowUtils.throwIf(!updated, ErrorCode.SYSTEM_ERROR, "更新下载次数失败");
     }
 
     /**

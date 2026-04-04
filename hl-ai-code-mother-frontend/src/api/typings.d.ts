@@ -83,6 +83,7 @@ declare namespace API {
     currentVersionId?: number
     deployedTime?: string
     priority?: number
+    downloadCount?: number
     userId?: number
     createTime?: string
     updateTime?: string
@@ -214,6 +215,10 @@ declare namespace API {
     appId: number
   }
 
+  type downloadAppCodeParams = {
+    appId: number
+  }
+
   type downloadChatHistoryMdParams = {
     appId: number
   }
@@ -228,6 +233,10 @@ declare namespace API {
 
   type getAppVoByIdParams = {
     id: number
+  }
+
+  type getDownloadCountByAppParams = {
+    appId: number
   }
 
   type getUserByIdParams = {
