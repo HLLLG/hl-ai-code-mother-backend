@@ -19,6 +19,12 @@ spring:
       port: 6379
       password:
       ttl: 3600
+  # rabbitmq
+  rabbitmq:
+      host: localhost
+      port: 5672
+      username: guest
+      password: guest
 server:
   port: 8123
   servlet:
@@ -58,3 +64,10 @@ langchain4j:
       log-responses: true
       max-tokens: 8192
       max-retries: 1
+cos:
+  client:
+    host:
+    secretId:
+    secretKey:
+    bucket:
+    region:

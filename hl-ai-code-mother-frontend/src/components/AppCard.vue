@@ -1,6 +1,6 @@
 <template>
   <a-card class="app-card social-card" :bordered="false" hoverable :body-style="{ padding: '16px 18px 18px' }">
-    <AppCover :src="app.cover" :title="coverTitle" :featured="featured" zoom-on-hover>
+    <AppCover :src="coverSrc" :title="coverTitle" :featured="featured" zoom-on-hover>
       <div class="cover-overlay">
         <div class="cover-actions">
           <a-button
@@ -105,6 +105,13 @@ const emit = defineEmits<{
   (e: 'preview', app: API.AppVO): void
   (e: 'members', app: API.AppVO): void
 }>()
+
+const DEFAULT_COVER = 'https://picsum.photos/320/180'
+
+const coverSrc = computed(() => {
+  const c = props.app.cover?.trim()
+  return c || DEFAULT_COVER
+})
 
 const authorNameText = computed(() => props.authorName || props.app.user?.userName || '未命名用户')
 const authorInitialText = computed(() => {

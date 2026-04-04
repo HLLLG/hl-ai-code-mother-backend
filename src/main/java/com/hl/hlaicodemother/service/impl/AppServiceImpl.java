@@ -6,6 +6,8 @@ import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
+import com.hl.hlaicodemother.bizmq.ScreenshotMessageProducer;
+import com.hl.hlaicodemother.bizmq.ScreenshotTaskMessage;
 import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.constant.UserConstant;
 import com.hl.hlaicodemother.core.AiCodeGeneratorFacade;
@@ -30,7 +32,6 @@ import com.hl.hlaicodemother.model.vo.AppVO;
 import com.hl.hlaicodemother.model.vo.UserVO;
 import com.hl.hlaicodemother.service.AppMemberService;
 import com.hl.hlaicodemother.service.AppService;
-import com.hl.hlaicodemother.service.ScreenshotService;
 import com.hl.hlaicodemother.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
@@ -83,7 +84,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private VueProjectBuilder vueProjectBuilder;
 
     @Resource
-    private ScreenshotService screenshotService;
+    private ScreenshotMessageProducer screenshotMessageProducer;
 
 
     /**
@@ -216,23 +217,16 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
         // 返回部署访问地址
-        String deployUrl = String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey + "/v" + app.getCurrentVersion());
+        String deployUrl = String.format("%s/%s/v%s/", AppConstant.CODE_DEPLOY_HOST,
+                app.getDeployKey(), app.getCurrentVersion());
+        ;
         generateAppScreenshotAsync(appId, deployUrl);
         return deployUrl;
     }
 
     @Override
     public void generateAppScreenshotAsync(Long appId, String appDeployUrl) {
-        Thread.startVirtualThread(() -> {
-            // 调用截图服务并上传
-            String cosUrl = screenshotService.generateAndUploadScreenshot(appDeployUrl);
-            // 更新应用封面
-            App updateApp = new App();
-            updateApp.setCover(cosUrl);
-            updateApp.setId(appId);
-            boolean updateResult = this.updateById(updateApp);
-            ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用封面失败");
-        });
+        screenshotMessageProducer.sendScreenshotTask(new ScreenshotTaskMessage(appId, appDeployUrl));
     }
 
     @Override
