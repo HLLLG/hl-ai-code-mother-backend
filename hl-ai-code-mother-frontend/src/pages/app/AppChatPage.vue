@@ -153,6 +153,18 @@
 
         <!-- 用户消息输入框 -->
         <div class="input-container">
+          <!-- 选中元素提示 -->
+          <div v-if="selectedElements.length > 0" class="selected-elements-bar">
+            <a-alert
+              v-for="(el, index) in selectedElements"
+              :key="el.xpath"
+              type="info"
+              closable
+              :message="formatElementLabel(el)"
+              @close="removeSelectedElement(index)"
+              class="selected-element-alert"
+            />
+          </div>
           <div class="input-wrapper">
             <a-tooltip v-if="!canEditChat" :title="readonlyTooltipText" placement="top">
               <a-textarea
@@ -174,6 +186,18 @@
               :disabled="isGenerating"
             />
             <div class="input-actions">
+              <a-tooltip :title="isEditMode ? '退出编辑模式' : '可视化选择元素'">
+                <a-button
+                  :type="isEditMode ? 'primary' : 'default'"
+                  :class="{ 'edit-mode-active': isEditMode }"
+                  @click="toggleEditMode"
+                  :disabled="!canEditChat || isGenerating || !previewUrl"
+                >
+                  <template #icon>
+                    <EditOutlined />
+                  </template>
+                </a-button>
+              </a-tooltip>
               <a-button
                 v-if="isGenerating"
                 danger
@@ -205,6 +229,9 @@
         <div class="preview-header">
           <h3>生成后的网页展示</h3>
           <div class="preview-actions">
+            <a-tag v-if="isEditMode" color="red">
+              <EditOutlined /> 编辑模式 · 点击选择元素
+            </a-tag>
             <a-button v-if="previewUrl" type="link" @click="openInNewTab">
               <template #icon>
                 <ExportOutlined />
@@ -224,9 +251,10 @@
           </div>
           <iframe
             v-else
+            ref="previewIframeRef"
             :key="previewUrl"
             :src="previewUrl"
-            class="preview-iframe"
+            :class="['preview-iframe', { 'preview-iframe-editing': isEditMode }]"
             title="生成页面预览"
             sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"
           ></iframe>
@@ -284,16 +312,32 @@ import {
   ExportOutlined,
   InfoCircleOutlined,
   PauseCircleOutlined,
+  EditOutlined,
 } from '@ant-design/icons-vue'
 import { userLoginStore } from '@/stores/loginUser.ts'
 import { APP_MEMBER_ROLE, canAccessAppMembers } from '@/utils/appMembers.ts'
 import AppChatWebSocket from '@/utils/AppChatWebSocket.ts'
 import { APP_CHAT_MESSAGE_TYPE_ENUM, APP_CHAT_STREAM_PHASE } from '@/utils/app.ts'
+import {
+  useVisualEditor,
+  formatSelectedElementsForPrompt,
+  formatElementLabel,
+} from '@/utils/visualEditor'
 
 const route = useRoute()
 const router = useRouter()
 const loginUserStore = userLoginStore()
 const CHAT_HISTORY_PAGE_SIZE = 10
+
+// 可视化编辑
+const {
+  isEditMode,
+  selectedElements,
+  enterEditMode,
+  exitEditMode,
+  removeSelectedElement,
+} = useVisualEditor()
+const previewIframeRef = ref<HTMLIFrameElement>()
 
 // 应用信息
 const appInfo = ref<API.AppVO>()
@@ -1072,6 +1116,13 @@ const sendMessage = async () => {
   const currentMessage = userInput.value.trim()
   userInput.value = ''
 
+  const elementsSuffix = formatSelectedElementsForPrompt(selectedElements.value)
+  const fullPrompt = currentMessage + elementsSuffix
+
+  if (isEditMode.value) {
+    exitEditMode()
+  }
+
   messages.value.push({
     type: 'user',
     content: currentMessage,
@@ -1093,7 +1144,7 @@ const sendMessage = async () => {
   isGenerating.value = true
   activeAiMessageIndex.value = aiMessageIndex
   notifyChatAction()
-  await generateCode(currentMessage, aiMessageIndex)
+  await generateCode(fullPrompt, aiMessageIndex)
 }
 
 const cleanupActiveGeneration = () => {
@@ -1426,6 +1477,18 @@ const deployApp = async () => {
   }
 }
 
+const toggleEditMode = () => {
+  if (isEditMode.value) {
+    exitEditMode()
+    return
+  }
+  if (!previewIframeRef.value) {
+    message.warning('预览页面尚未加载，请稍后再试')
+    return
+  }
+  enterEditMode(previewIframeRef.value)
+}
+
 const openInNewTab = () => {
   if (previewUrl.value) {
     window.open(previewUrl.value, '_blank')
@@ -1549,6 +1612,7 @@ onBeforeRouteLeave(async () => {
   if (isGenerating.value && canEditChat.value) {
     await stopGenerating(false)
   }
+  exitEditMode()
   leaveChatSession(false)
   clearChatSocketConnectTimer()
   chatSocket.value?.disconnect()
@@ -1777,6 +1841,39 @@ onBeforeUnmount(() => {
   color: var(--app-text-muted);
 }
 
+/* 选中元素提示栏 */
+.selected-elements-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.selected-element-alert {
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.selected-element-alert :deep(.ant-alert-message) {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* 编辑模式按钮激活态 */
+.edit-mode-active {
+  animation: editPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes editPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(37, 99, 235, 0);
+  }
+}
+
 /* 输入区域 */
 .input-container {
   position: relative;
@@ -1936,6 +2033,12 @@ onBeforeUnmount(() => {
   height: 100%;
   border: none;
   background: #ffffff;
+}
+
+.preview-iframe-editing {
+  outline: 3px solid var(--app-primary);
+  outline-offset: -3px;
+  border-radius: 4px;
 }
 
 .header-right :deep(.ant-btn),
