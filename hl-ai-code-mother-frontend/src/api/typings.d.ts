@@ -205,6 +205,7 @@ declare namespace API {
   type chatToGenCodeParams = {
     appId: number
     message: string
+    isAdd: boolean
   }
 
   type DeleteRequest = {
@@ -313,6 +314,7 @@ declare namespace API {
 
   type serveStaticResourceParams = {
     deployKey: string
+    version: number
   }
 
   type stopChatToGenCodeParams = {

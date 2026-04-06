@@ -141,7 +141,7 @@ public class OpenAiStreamingResponseBuilder {
         }
 
         if (delta.toolCalls() != null) {
-            System.out.println("OLOLO " + delta.toolCalls()); // TODO
+//            System.out.println("OLOLO " + delta.toolCalls()); // TODO
 
             for (ToolCall toolCall : delta.toolCalls()) {
 

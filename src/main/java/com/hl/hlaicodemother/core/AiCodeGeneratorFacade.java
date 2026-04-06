@@ -87,7 +87,7 @@ public class AiCodeGeneratorFacade {
      * @return
      */
     public Flux<String> generateAndSaveCodeStream(String userMessage, CodeGenTypeEnum codeGenType, App app,
-                                                  String taskKey) {
+                                                  String taskKey, Boolean isAdd) {
         // 校验参数
         if (StrUtil.isBlank(userMessage)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户输入不能为空");
@@ -106,18 +106,23 @@ public class AiCodeGeneratorFacade {
             case HTML -> {
                 Flux<String> htmlCodeStream = aiCodeGeneratorService.generateHtmlCodeStream(userMessage)
                         .takeUntilOther(taskContext.getCancelSignal());
-                yield processCodeStream(htmlCodeStream, CodeGenTypeEnum.HTML, app, userMessage, taskKey, taskContext);
+                yield processCodeStream(htmlCodeStream, CodeGenTypeEnum.HTML, app, userMessage, taskKey, taskContext, isAdd);
             }
             case MULTI_FILE -> {
                 Flux<String> multiFileCodeStream = aiCodeGeneratorService.generateMultiFileStream(userMessage)
                         .takeUntilOther(taskContext.getCancelSignal());
                 yield processCodeStream(multiFileCodeStream, CodeGenTypeEnum.MULTI_FILE, app, userMessage, taskKey,
-                        taskContext);
+                        taskContext, isAdd);
             }
             case VUE_PROJECT -> {
                 aiCodeGeneratorServiceFactory.resetGeneration(app.getId());
-                int vueVersion = appVersionService.addVersion(app, userMessage);
-                aiCodeGeneratorServiceFactory.configureVueOutputVersion(app.getId(), vueVersion);
+                // 默认获取当前版本（用于修改当前版本内容）
+                int version = app.getCurrentVersion();
+                // 如果是新增项目
+                if (isAdd) {
+                    version = appVersionService.addVersion(app, userMessage);
+                }
+                aiCodeGeneratorServiceFactory.configureVueOutputVersion(app.getId(), version);
                 TokenStream vueProjectStream = aiCodeGeneratorService.generateVueProjectStream(app.getId(), userMessage);
                 yield processTokenStream(vueProjectStream, taskKey, taskContext, app.getId())
                         .takeUntilOther(taskContext.getCancelSignal());
@@ -136,7 +141,7 @@ public class AiCodeGeneratorFacade {
      */
     private Flux<String> processCodeStream(Flux<String> codeStream, CodeGenTypeEnum codeGenType, App app,
                                            String userMessage, String taskKey,
-                                           AiGenerationTaskManager.TaskContext taskContext) {
+                                           AiGenerationTaskManager.TaskContext taskContext, Boolean isAdd) {
         StringBuilder codeBuilder = new StringBuilder();
         // 实时收集代码片段
         return codeStream.doOnNext(codeBuilder::append).doOnComplete(() -> {
@@ -147,7 +152,12 @@ public class AiCodeGeneratorFacade {
             try {
                 String completeResult = codeBuilder.toString();
                 Object parserResult = CodeParserExecutor.executeParser(completeResult, codeGenType);
-                int version = appVersionService.addVersion(app, userMessage);
+                // 默认获取当前版本（用于修改当前版本内容）
+                int version = app.getCurrentVersion();
+                if (isAdd) {
+                    // 如果是新增项目
+                    version = appVersionService.addVersion(app, userMessage);
+                }
                 File saveDir = CodeFileSaverExecutor.executeSaver(parserResult, codeGenType, app.getId(), version);
                 log.info("保存成功，路径为：{}", saveDir.getAbsolutePath());
             } catch (Exception e) {
@@ -160,8 +170,8 @@ public class AiCodeGeneratorFacade {
 
     /**
      * 将TokenStream转换为Flux<String>, 并传递工具调用信息。
-     * 通过 sink.onDispose 将 Flux 取消信号桥接到 taskContext 和 FileWriteTool，
-     * 使得 FileWriteTool 抛出异常来中断 langchain4j 的工具调用循环，阻止后续 LLM 请求。
+     * 通过 sink.onDispose 将 Flux 取消信号桥接到 taskContext 与 Vue 文件工具，
+     * 使得工具在执行时抛出异常来中断 langchain4j 的工具调用循环，阻止后续 LLM 请求。
      * 添加了 STREAM_TIMEOUT 兜底：如果超时未收到任何数据则自动完成流。
      */
     private Flux<String> processTokenStream(TokenStream tokenStream, String taskKey,

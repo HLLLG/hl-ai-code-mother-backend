@@ -2,7 +2,7 @@ package com.hl.hlaicodemother.ai;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
-import com.hl.hlaicodemother.ai.tools.FileWriteTool;
+import com.hl.hlaicodemother.ai.tools.ToolManager;
 import com.hl.hlaicodemother.config.MyRedisChatMemoryStore;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
@@ -14,6 +14,7 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.service.AiServices;
 import jakarta.annotation.Resource;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Component
 @Slf4j
+@Getter
 public class AiCodeGeneratorServiceFactory {
 
     @Resource
@@ -55,9 +57,9 @@ public class AiCodeGeneratorServiceFactory {
             .build();
 
     /**
-     * 每个 appId 对应的 FileWriteTool 实例引用，用于在取消任务时通知工具停止执行
+     * 每个 appId 对应的 Vue 文件工具聚合（写入/删除/读取/修改/目录列举），用于版本同步与取消任务。
      */
-    private final ConcurrentHashMap<Long, FileWriteTool> fileWriteToolMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, ToolManager> vueProjectFileToolsMap = new ConcurrentHashMap<>();
 
     /**
      * 每个 appId 对应的可取消 StreamingChatModel 包装器引用，
@@ -106,8 +108,8 @@ public class AiCodeGeneratorServiceFactory {
         // 构建 AI 服务实例
         return switch (codeGenType) {
             case VUE_PROJECT -> {
-                FileWriteTool fileWriteTool = new FileWriteTool(appId);
-                fileWriteToolMap.put(appId, fileWriteTool);
+                ToolManager toolManager = ToolManager.build(appId);
+                vueProjectFileToolsMap.put(appId, toolManager);
                 CancellableStreamingChatModelWrapper modelWrapper =
                         new CancellableStreamingChatModelWrapper(reasoningStreamingChatModel);
                 chatModelWrapperMap.put(appId, modelWrapper);
@@ -115,7 +117,7 @@ public class AiCodeGeneratorServiceFactory {
                         .chatModel(chatModel)
                         .streamingChatModel(modelWrapper)
                         .chatMemoryProvider(memoryId -> chatMemory)
-                        .tools(fileWriteTool)
+                        .tools(toolManager.getAllTools())
                         .hallucinatedToolNameStrategy(toolExecutionRequest ->
                                 ToolExecutionResultMessage.from(toolExecutionRequest,
                                         "Error: that is no tool called " + toolExecutionRequest.name())
@@ -134,13 +136,13 @@ public class AiCodeGeneratorServiceFactory {
 
     /**
      * 取消指定 appId 的生成：
-     * 1. 标记 FileWriteTool 为已取消 → 阻止后续文件写入
+     * 1. 标记 Vue 文件工具聚合为已取消
      * 2. 标记 StreamingChatModel 包装器为已取消 → 阻止新一轮 LLM 请求（中断工具调用循环）
      */
     public void cancelGeneration(Long appId) {
-        FileWriteTool tool = fileWriteToolMap.get(appId);
-        if (tool != null) {
-            tool.setCancelled(true);
+        ToolManager vueTools = vueProjectFileToolsMap.get(appId);
+        if (vueTools != null) {
+            vueTools.setCancelled(true);
         }
         CancellableStreamingChatModelWrapper wrapper = chatModelWrapperMap.get(appId);
         if (wrapper != null) {
@@ -153,9 +155,9 @@ public class AiCodeGeneratorServiceFactory {
      * 须在 {@link #resetGeneration(Long)} 之后、启动 TokenStream 之前调用。
      */
     public void configureVueOutputVersion(long appId, int version) {
-        FileWriteTool tool = fileWriteToolMap.get(appId);
-        if (tool != null) {
-            tool.prepareForGeneration(version);
+        ToolManager vueTools = vueProjectFileToolsMap.get(appId);
+        if (vueTools != null) {
+            vueTools.prepareForGeneration(version);
         }
     }
 
@@ -163,14 +165,21 @@ public class AiCodeGeneratorServiceFactory {
      * 重置指定 appId 的取消状态，在新一轮生成前调用
      */
     public void resetGeneration(Long appId) {
-        FileWriteTool tool = fileWriteToolMap.get(appId);
-        if (tool != null) {
-            tool.setCancelled(false);
+        ToolManager vueTools = vueProjectFileToolsMap.get(appId);
+        if (vueTools != null) {
+            vueTools.setCancelled(false);
         }
         CancellableStreamingChatModelWrapper wrapper = chatModelWrapperMap.get(appId);
         if (wrapper != null) {
             wrapper.setCancelled(false);
         }
+    }
+
+    /**
+     * 获取工具管理类
+     */
+    public ToolManager getToolManager(Long appId) {
+        return vueProjectFileToolsMap.get(appId);
     }
 
     private String buildCachedKey(Long appId, CodeGenTypeEnum codeGenType) {

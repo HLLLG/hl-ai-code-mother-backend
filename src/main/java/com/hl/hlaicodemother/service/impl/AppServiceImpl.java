@@ -35,7 +35,6 @@ import com.hl.hlaicodemother.service.AppMemberService;
 import com.hl.hlaicodemother.service.AppService;
 import com.hl.hlaicodemother.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
-import com.mybatisflex.core.update.UpdateChain;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -99,11 +98,12 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
      *
      * @param appId   应用 ID
      * @param message 用户输入的对话消息
+     * @param isAdd
      * @param user    当前操作用户
      * @return 返回包含生成代码片段的 Flux 流
      */
     @Override
-    public Flux<String> chatToGenCode(Long appId, String message, User user) {
+    public Flux<String> chatToGenCode(Long appId, String message, Boolean isAdd, User user) {
         // 校验参数
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "用户输入不能为空");
@@ -130,7 +130,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
                 JSONUtil.toJsonStr(startPayload), editorVo);
         // 调用 AI 模型接口，生成代码
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, app,
-                taskKey);
+                taskKey, isAdd);
         return streamHandlerExecutor.doExecute(codeStream, appId, streamId, user, taskKey, editorVo,
                 appChatWebSocketHandler, chatHistoryService, aiGenerationTaskManager, codeGenTypeEnum);
     }

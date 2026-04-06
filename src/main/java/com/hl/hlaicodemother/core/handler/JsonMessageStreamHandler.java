@@ -1,21 +1,21 @@
 package com.hl.hlaicodemother.core.handler;
 
-import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.hl.hlaicodemother.ai.AiCodeGeneratorServiceFactory;
 import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.ai.model.message.*;
+import com.hl.hlaicodemother.ai.tools.BaseTool;
+import com.hl.hlaicodemother.ai.tools.ToolManager;
 import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.core.builder.VueProjectBuilder;
 import com.hl.hlaicodemother.manager.websocket.AppChatWebSocketHandler;
 import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatStreamPhaseEnum;
-import com.hl.hlaicodemother.model.entity.App;
 import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.enums.ChatHistoryMessageTypeEnum;
 import com.hl.hlaicodemother.model.vo.UserVO;
-import com.hl.hlaicodemother.service.AppService;
 import com.hl.hlaicodemother.service.AppVersionService;
 import com.hl.hlaicodemother.service.ChatHistoryService;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -42,18 +42,21 @@ public class JsonMessageStreamHandler {
     @Resource
     private AppVersionService appVersionService;
 
+    @Resource
+    private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
+
     /**
      * 处理 AI 生成的 JSON 消息流，将原始 Flux 流转换为处理后的字符串流
      * 主要功能包括：解析 JSON 消息块、广播给围观成员、保存聊天历史、处理完成/取消/异常事件
      *
-     * @param originFlux 原始 AI 生成的消息流
-     * @param appId 应用 ID
-     * @param streamId 流 ID，用于标识当前的生成任务
-     * @param user 当前用户信息
-     * @param taskKey 任务键，用于从任务管理器中获取任务上下文
-     * @param editorVo 编辑者的用户视图对象，用于 WebSocket 广播
+     * @param originFlux              原始 AI 生成的消息流
+     * @param appId                   应用 ID
+     * @param streamId                流 ID，用于标识当前的生成任务
+     * @param user                    当前用户信息
+     * @param taskKey                 任务键，用于从任务管理器中获取任务上下文
+     * @param editorVo                编辑者的用户视图对象，用于 WebSocket 广播
      * @param appChatWebSocketHandler WebSocket 处理器，用于向客户端广播消息
-     * @param chatHistoryService 聊天历史服务，用于保存 AI 响应到历史记录
+     * @param chatHistoryService      聊天历史服务，用于保存 AI 响应到历史记录
      * @param aiGenerationTaskManager AI 生成任务管理器，用于检查任务是否被取消
      * @return 处理后的消息流，包含处理过的 JSON 字符串
      */
@@ -74,8 +77,7 @@ public class JsonMessageStreamHandler {
                     // 解析每个 JSON 消息块
                     return handleJsonMessageChunk(chunk, appId, streamId, user, editorVo, appChatWebSocketHandler,
                             chatHistoryBuilder, seenTollIds);
-                })
-                .filter(StrUtil::isNotEmpty) // 过滤空字符串
+                }).filter(StrUtil::isNotEmpty) // 过滤空字符串
                 // 处理生成完成事件：根据是否被取消发送不同状态，并保存 AI 响应到聊天历史
                 .doOnComplete(() -> {
                     boolean cancelled = taskContext != null && taskContext.isCancelled();
@@ -86,8 +88,10 @@ public class JsonMessageStreamHandler {
                                 AppChatStreamPhaseEnum.STOPPED.getValue(), editorVo);
                     } else {
                         // 异步构造 Vue 项目
-                        int versionCount = (int) appVersionService.count(new QueryWrapper().eq(AppVersion::getAppId, appId));
-                        String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId + "/v" + versionCount;
+                        int versionCount = (int) appVersionService.count(new QueryWrapper().eq(AppVersion::getAppId,
+                                appId));
+                        String projectPath =
+                                AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId + "/v" + versionCount;
                         vueProjectBuilder.buildProjectAsync(projectPath);
                         // 任务正常完成，发送完成消息并提示刷新应用
                         String donePayLoad = JSONUtil.toJsonStr(Map.of("refreshApp", true));
@@ -116,9 +120,11 @@ public class JsonMessageStreamHandler {
     }
 
 
-    private String handleJsonMessageChunk(String chunk, Long appId, String streamId, User user,
-                                          UserVO editorVo, AppChatWebSocketHandler appChatWebSocketHandler,
+    private String handleJsonMessageChunk(String chunk, Long appId, String streamId, User user, UserVO editorVo,
+                                          AppChatWebSocketHandler appChatWebSocketHandler,
                                           StringBuilder chatHistoryBuilder, Set<String> seenTollIds) {
+        // 获取当前应用的工具管理器
+        ToolManager toolManager = aiCodeGeneratorServiceFactory.getToolManager(appId);
         // 将chunk 解析为 StreamMessage 对象
         StreamMessage streamMessage = JSONUtil.toBean(chunk, StreamMessage.class);
         String type = streamMessage.getType();
@@ -148,14 +154,16 @@ public class JsonMessageStreamHandler {
                 // 将 chunk 转换为 ToolRequestMessage 对象
                 ToolRequestMessage toolRequestMessage = JSONUtil.toBean(chunk, ToolRequestMessage.class);
                 String id = toolRequestMessage.getId();
-                String name = toolRequestMessage.getName();
+                String toolName = toolRequestMessage.getName();
                 // 检查是否是第一次调用工具
                 if (id != null && !seenTollIds.contains(id)) {
                     seenTollIds.add(id);
-                    String chunkPayLoad = JSONUtil.toJsonStr(Map.of("d", "\n\n[选择工具] 写入文件\n\n"));
+                    BaseTool tool = toolManager.getTool(toolName);
+                    String toolRequestResponse = tool.generateToolRequestResponse();
+                    String chunkPayLoad = JSONUtil.toJsonStr(Map.of("d", toolRequestResponse));
                     appChatWebSocketHandler.broadcastToApp(appId, user, streamId, chunkPayLoad,
                             AppChatStreamPhaseEnum.CHUNK.getValue(), editorVo);
-                    return "\n\n[🔧选择工具] " +  name + "\n\n";
+                    return toolRequestResponse;
                 } else {
                     return "";
                 }
@@ -163,16 +171,10 @@ public class JsonMessageStreamHandler {
             case TOOL_EXECUTED -> {
                 // 将 chunk 转换为 ToolExecutionMessage 对象
                 ToolExecutedMessage toolExecutedMessage = JSONUtil.toBean(chunk, ToolExecutedMessage.class);
-                JSONObject jsonObject = JSONUtil.parseObj(toolExecutedMessage.getArguments());
-                String relativeFilePath = jsonObject.getStr("relativeFilePath");
-                String suffix = FileUtil.getSuffix(relativeFilePath);
-                String content = jsonObject.getStr("content");
-                String result = String.format("""
-                        [🔧工具调用] 写入文件 %s
-                        ```%s
-                        %s
-                        ```
-                        """, relativeFilePath, suffix, content);
+                String toolName = toolExecutedMessage.getName();
+                JSONObject arguments = JSONUtil.parseObj(toolExecutedMessage.getArguments());
+                BaseTool tool = toolManager.getTool(toolName);
+                String result = tool.generateToolExecuteResult(arguments);
                 // 输出前端和要持久化的内容
                 String output = String.format("\n\n%s\n\n", result);
                 String chunkPayLoad = JSONUtil.toJsonStr(Map.of("d", output));

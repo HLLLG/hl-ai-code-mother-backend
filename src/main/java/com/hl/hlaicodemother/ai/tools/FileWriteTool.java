@@ -1,50 +1,41 @@
 package com.hl.hlaicodemother.ai.tools;
 
 import cn.hutool.core.io.FileUtil;
-import com.hl.hlaicodemother.constant.AppConstant;
+import cn.hutool.json.JSONObject;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import lombok.extern.slf4j.Slf4j;
 
-import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 文件写入工具类，通过构造函数绑定 appId，避免将 appId 暴露为工具参数
  */
 @Slf4j
-public class FileWriteTool {
+public class FileWriteTool extends BaseTool {
 
-    private final Long appId;
     private final Set<String> writtenFiles = new HashSet<>();
     private static final int MAX_FILE_COUNT = 30;
     private static final int MAX_REJECT_COUNT = 3;
-    private final AtomicBoolean cancelled = new AtomicBoolean(false);
-    /** 未设置时为 0，须在每轮生成前通过 {@link #prepareForGeneration(int)} 写入 */
-    private final AtomicInteger outputVersion = new AtomicInteger(0);
     private int consecutiveRejectCount = 0;
 
     public FileWriteTool(Long appId) {
-        this.appId = appId;
+        super(appId);
     }
 
     /**
      * 新一轮生成前调用：清空已写文件记录、设置本次版本号（目录为 vue_project_{appId}/v{n}/）
      */
+    @Override
     public void prepareForGeneration(int version) {
+        super.prepareForGeneration(version);
         writtenFiles.clear();
         consecutiveRejectCount = 0;
-        outputVersion.set(version);
     }
 
-    public void setCancelled(boolean value) {
-        cancelled.set(value);
-    }
 
     /**
      * 写入文件
@@ -81,17 +72,10 @@ public class FileWriteTool {
         // 本次写入成功，重置连续拒绝计数
         consecutiveRejectCount = 0;
         try {
-            String pathStr = relativeFilePath;
-            if (!Paths.get(pathStr).isAbsolute()) {
-                int ver = outputVersion.get();
-                if (ver <= 0) {
-                    throw new RuntimeException("内部错误：未设置 Vue 工程输出版本号，无法写入文件");
-                }
-                String projectRoot = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + "vue_project_" + appId
-                        + File.separator + "v" + ver;
-                pathStr = FileUtil.normalize(projectRoot + File.separator + relativeFilePath);
+            Path path = Paths.get(relativeFilePath);
+            if (!path.isAbsolute()) {
+                path = this.resolveProjectPath(relativeFilePath);
             }
-            Path path = Paths.get(pathStr);
             FileUtil.mkdir(path.getParent().toString());
             FileUtil.writeUtf8String(content, path.toString());
             writtenFiles.add(relativeFilePath);
@@ -101,5 +85,28 @@ public class FileWriteTool {
             log.error("写入文件失败：{}", e.getMessage());
             return "写入文件失败：" + relativeFilePath + "，错误信息：" + e.getMessage();
         }
+    }
+
+    @Override
+    public String getToolName() {
+        return "writeFile";
+    }
+
+    @Override
+    public String getDisplayName() {
+        return "写入文件";
+    }
+
+    @Override
+    public String generateToolExecuteResult(JSONObject arguments) {
+        String relativeFilePath = arguments.getStr("relativeFilePath");
+        String suffix = FileUtil.getSuffix(relativeFilePath);
+        String content = arguments.getStr("content");
+        return String.format("""
+                        [🔧工具调用] %s %s
+                        ```%s
+                        %s
+                        ```
+                        """, getDisplayName(), relativeFilePath, suffix, content);
     }
 }

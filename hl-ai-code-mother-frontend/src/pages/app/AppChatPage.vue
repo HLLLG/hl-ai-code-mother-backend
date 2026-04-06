@@ -232,6 +232,12 @@
             <a-tag v-if="isEditMode" color="red">
               <EditOutlined /> 编辑模式 · 点击选择元素
             </a-tag>
+            <a-button v-if="previewUrl" type="link" @click="refreshPreview">
+              <template #icon>
+                <ReloadOutlined />
+              </template>
+              刷新
+            </a-button>
             <a-button v-if="previewUrl" type="link" @click="openInNewTab">
               <template #icon>
                 <ExportOutlined />
@@ -310,6 +316,7 @@ import {
   LinkOutlined,
   SendOutlined,
   ExportOutlined,
+  ReloadOutlined,
   InfoCircleOutlined,
   PauseCircleOutlined,
   EditOutlined,
@@ -1104,7 +1111,7 @@ const sendInitialMessage = async (prompt: string) => {
   isGenerating.value = true
   activeAiMessageIndex.value = aiMessageIndex
   notifyChatAction()
-  await generateCode(prompt, aiMessageIndex)
+  await generateCode(prompt, aiMessageIndex, true)
 }
 
 // 发送消息
@@ -1115,6 +1122,8 @@ const sendMessage = async () => {
 
   const currentMessage = userInput.value.trim()
   userInput.value = ''
+
+  const isAdd = !isEditMode.value
 
   const elementsSuffix = formatSelectedElementsForPrompt(selectedElements.value)
   const fullPrompt = currentMessage + elementsSuffix
@@ -1144,7 +1153,7 @@ const sendMessage = async () => {
   isGenerating.value = true
   activeAiMessageIndex.value = aiMessageIndex
   notifyChatAction()
-  await generateCode(fullPrompt, aiMessageIndex)
+  await generateCode(fullPrompt, aiMessageIndex, isAdd)
 }
 
 const cleanupActiveGeneration = () => {
@@ -1205,7 +1214,7 @@ const stopGenerating = async (shouldNotify = true) => {
 }
 
 // 生成代码 - 使用 EventSource 处理流式响应
-const generateCode = async (userMessage: string, aiMessageIndex: number) => {
+const generateCode = async (userMessage: string, aiMessageIndex: number, isAdd: boolean) => {
   let streamCompleted = false
 
   const finalizeStream = (options?: { refreshApp?: boolean }) => {
@@ -1241,6 +1250,7 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
     const params = new URLSearchParams({
       appId: String(appId.value || ''),
       message: userMessage,
+      isAdd: String(isAdd),
     })
 
     const url = `${baseURL}/app/chat/gen/code?${params}`
@@ -1487,6 +1497,13 @@ const toggleEditMode = () => {
     return
   }
   enterEditMode(previewIframeRef.value)
+}
+
+const refreshPreview = () => {
+  if (isEditMode.value) {
+    exitEditMode()
+  }
+  updatePreview()
 }
 
 const openInNewTab = () => {

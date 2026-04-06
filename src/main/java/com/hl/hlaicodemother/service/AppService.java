@@ -20,12 +20,14 @@ public interface AppService extends IService<App> {
 
     /**
      * 与AI模型对话，生成代码
+     *
      * @param appId
      * @param message
+     * @param isAdd
      * @param user
      * @return
      */
-    Flux<String> chatToGenCode(Long appId, String message, User user);
+    Flux<String> chatToGenCode(Long appId, String message, Boolean isAdd, User user);
 
     /**
      * 停止 AI 生成代码
