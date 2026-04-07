@@ -144,11 +144,12 @@ public class JsonMessageStreamHandler {
                 // 将 chunk 转换为 ThinkingResponseMessage 对象
                 ThinkingResponseMessage thinkingResponseMessage = JSONUtil.toBean(chunk, ThinkingResponseMessage.class);
                 String text = thinkingResponseMessage.getText();
-                String chunkPayLoad = JSONUtil.toJsonStr(Map.of("d", text));
+                String output = String.format("[正在思考]：%s", text);
+                String chunkPayLoad = JSONUtil.toJsonStr(Map.of("d", output));
                 appChatWebSocketHandler.broadcastToApp(appId, user, streamId, chunkPayLoad,
                         AppChatStreamPhaseEnum.CHUNK.getValue(), editorVo);
-                chatHistoryBuilder.append(text);
-                return text;
+                chatHistoryBuilder.append(output);
+                return output;
             }
             case TOOL_REQUEST -> {
                 // 将 chunk 转换为 ToolRequestMessage 对象
