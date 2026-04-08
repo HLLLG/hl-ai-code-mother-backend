@@ -16,7 +16,7 @@ import static org.bsc.langgraph4j.GraphDefinition.END;
 import static org.bsc.langgraph4j.GraphDefinition.START;
 
 /**
- * 实际的工作流应用
+ * 工作流应用
  *
  * @author hl
  */
@@ -44,7 +44,7 @@ public class WorkflowApp {
 
         // 初始化 WorkflowContext - 只设置基本信息
         WorkflowContext initialContext = WorkflowContext.builder()
-                .originalPrompt("创建一个鱼皮的个人博客网站")
+                .originalPrompt("创建一个HL的个人博客网站")
                 .currentStep("初始化")
                 .build();
         log.info("初始输入: {}", initialContext.getOriginalPrompt());

@@ -71,3 +71,7 @@ cos:
     secretKey:
     bucket:
     region:
+# DashScope Sdk
+dashscope:
+  api-key:
+  imgae-model:

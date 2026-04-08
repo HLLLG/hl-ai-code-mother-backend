@@ -1,8 +1,10 @@
 package com.hl.hlaicodemother.langgraph4j.node;
 
+import com.hl.hlaicodemother.langgraph4j.ai.ImageCollectionService;
 import com.hl.hlaicodemother.langgraph4j.model.ImageResource;
 import com.hl.hlaicodemother.langgraph4j.model.enums.ImageCategoryEnum;
 import com.hl.hlaicodemother.langgraph4j.state.WorkflowContext;
+import com.hl.hlaicodemother.utils.SpringContextUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.bsc.langgraph4j.action.AsyncNodeAction;
 import org.bsc.langgraph4j.prebuilt.MessagesState;
@@ -23,27 +25,20 @@ public class ImageCollectorNode {
         return node_async(state -> {
             WorkflowContext context = WorkflowContext.getContext(state);
             log.info("执行节点: 图片收集");
-            
-            // TODO: 实际执行图片收集逻辑
-            
-            // 简单的假数据
-            List<ImageResource> imageList = Arrays.asList(
-                ImageResource.builder()
-                    .category(ImageCategoryEnum.CONTENT)
-                    .description("假数据图片1")
-                    .url("https://www.codefather.cn/logo.png")
-                    .build(),
-                ImageResource.builder()
-                    .category(ImageCategoryEnum.LOGO)
-                    .description("假数据图片2")
-                    .url("https://www.codefather.cn/logo.png")
-                    .build()
-            );
-            
+            // 获取原始提示词
+            String originalPrompt = context.getOriginalPrompt();
+            String imageListStr = null;
+            try {
+                // 获取AI图片收集服务
+                ImageCollectionService imageCollectionService = SpringContextUtil.getBean(ImageCollectionService.class);
+                // 调用图片收集服务
+                imageListStr = imageCollectionService.collectImages(originalPrompt);
+            } catch (Exception e) {
+                log.error("图片收集失败:{}", e.getMessage(), e);
+            }
             // 更新状态
             context.setCurrentStep("图片收集");
-            context.setImageList(imageList);
-            log.info("图片收集完成，共收集 {} 张图片", imageList.size());
+            context.setImageListStr(imageListStr);
             return WorkflowContext.saveContext(context);
         });
     }
