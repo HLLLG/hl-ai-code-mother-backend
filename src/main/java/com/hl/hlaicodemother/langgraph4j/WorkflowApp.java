@@ -2,11 +2,13 @@ package com.hl.hlaicodemother.langgraph4j;
 
 import com.hl.hlaicodemother.langgraph4j.node.*;
 import com.hl.hlaicodemother.langgraph4j.state.WorkflowContext;
+import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
 import lombok.extern.slf4j.Slf4j;
 import org.bsc.langgraph4j.CompiledGraph;
 import org.bsc.langgraph4j.GraphRepresentation;
 import org.bsc.langgraph4j.GraphStateException;
 import org.bsc.langgraph4j.NodeOutput;
+import org.bsc.langgraph4j.action.AsyncEdgeAction;
 import org.bsc.langgraph4j.prebuilt.MessagesState;
 import org.bsc.langgraph4j.prebuilt.MessagesStateGraph;
 
@@ -56,7 +58,8 @@ public class WorkflowApp {
 
         // 执行工作流
         int stepCounter = 1;
-        for (NodeOutput<MessagesState<String>> step : workflow.stream(Map.of(WorkflowContext.WORKFLOW_CONTEXT_KEY, initialContext))) {
+        for (NodeOutput<MessagesState<String>> step : workflow.stream(Map.of(WorkflowContext.WORKFLOW_CONTEXT_KEY,
+                initialContext))) {
             log.info("--- 第 {} 步完成 ---", stepCounter);
             // 显示当前状态
             WorkflowContext currentContext = WorkflowContext.getContext(step.state());

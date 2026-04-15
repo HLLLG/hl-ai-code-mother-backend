@@ -25,7 +25,8 @@ public class RouterNode {
             CodeGenTypeEnum generationType = null;
             try {
                 // 获取AI路由服务
-                AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService = SpringContextUtil.getBean(AiCodeGenTypeRoutingService.class);
+                AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService =
+                        SpringContextUtil.getBean(AiCodeGenTypeRoutingService.class);
                 generationType = aiCodeGenTypeRoutingService.routeCodeGenType(context.getOriginalPrompt());
                 log.info("AI智能路由完成，选择类型: {} ({})", generationType.getValue(), generationType.getText());
             } catch (Exception e) {

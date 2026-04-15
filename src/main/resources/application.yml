@@ -71,7 +71,10 @@ cos:
     secretKey:
     bucket:
     region:
+#图片搜索
+pexels:
+  api-key:
 # DashScope Sdk
 dashscope:
   api-key:
-  imgae-model:
+  image-model:

@@ -23,7 +23,7 @@ import java.util.List;
 
 
 /**
- * Mermaid 架构图生成工具工具
+ * Mermaid 架构图生成工具
  *
  * @author hl
  */
