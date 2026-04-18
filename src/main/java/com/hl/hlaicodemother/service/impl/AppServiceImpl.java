@@ -114,6 +114,11 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
      */
     private static final int GOOD_APP_PAGE_CACHE_MAX_PAGE = 10;
 
+    /**
+     * 延时双删的延迟时间。略大于一次"读 DB + 回写"耗时即可。
+     */
+    private static final Duration GOOD_APP_PAGE_CACHE_DOUBLE_DELETE_DELAY = Duration.ofMillis(500);
+
 
     /**
      * 通过对话流式生成代码。
@@ -339,6 +344,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             result = super.removeById(id);
             if (result) {
                 chatHistoryService.remove(new QueryWrapper().eq("appId", id));
+                // 写后失效：精选列表可能受影响，按前缀延时双删
+                invalidateGoodAppPageCache();
             }
         } catch (Exception e) {
             // 删除过程中发生异常，记录日志但不抛出，以免影响用户体验
@@ -411,13 +418,27 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             return queryGoodAppVOByPageFromDb(appQueryRequest);
         }
 
-        // 旁路缓存 + 空值哨兵：未命中则查库，查到为空也会写入负缓存
+        // 旁路缓存 + 空值哨兵 + 分布式锁防击穿
         String cacheKey = CacheKeyUtils.generateKeyWithPrefix(GOOD_APP_PAGE_CACHE_PREFIX, appQueryRequest);
-        return cacheAsideTemplate.getOrLoad(
+        return cacheAsideTemplate.getOrLoadWithLock(
                 cacheKey,
                 GOOD_APP_PAGE_CACHE_TTL,
                 new TypeReference<Page<AppVO>>() {}.getType(),
                 () -> queryGoodAppVOByPageFromDb(appQueryRequest)
+        );
+    }
+
+    /**
+     * 失效精选应用分页缓存（按前缀 + 延时双删）。
+     * <p>
+     * <b>调用时机</b>：管理员修改/删除应用、调整 priority 等会影响列表结果的写操作，
+     * 应在<b>事务提交后</b>触发，避免出现"缓存被删 → 别的读请求拿到旧 DB 值并回写"的脏数据窗口。
+     */
+    @Override
+    public void invalidateGoodAppPageCache() {
+        cacheAsideTemplate.delayedEvictByPattern(
+                GOOD_APP_PAGE_CACHE_PREFIX + "*",
+                GOOD_APP_PAGE_CACHE_DOUBLE_DELETE_DELAY
         );
     }
 

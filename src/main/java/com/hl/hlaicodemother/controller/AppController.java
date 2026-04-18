@@ -395,6 +395,8 @@ public class AppController {
         appService.validApp(app, false);
         boolean result = appService.updateById(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用更新失败");
+        // 写后失效：先更新 DB → 再删缓存（按前缀 + 延时双删），保证最终一致
+        appService.invalidateGoodAppPageCache();
         return ResultUtils.success(result);
     }
 

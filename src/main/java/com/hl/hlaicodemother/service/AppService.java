@@ -126,7 +126,7 @@ public interface AppService extends IService<App> {
     void incrementDownloadCount(App app);
 
     /**
-     * 分页查询"精选应用"列表（带旁路缓存 + 空值哨兵）。
+     * 分页查询"精选应用"列表（带旁路缓存 + 空值哨兵 + 防击穿）。
      * <p>
      * 仅在 pageNum &lt;= 10 的热点页使用缓存，冷门深翻页直接查库，避免污染缓存。
      *
@@ -134,5 +134,13 @@ public interface AppService extends IService<App> {
      * @return 分页结果（AppVO）
      */
     Page<AppVO> listGoodAppVOByPage(AppQueryRequest appQueryRequest);
+
+    /**
+     * 失效"精选应用分页"全量缓存（按前缀 SCAN 删除 + 延时双删）。
+     * <p>
+     * 调用方：所有可能影响精选列表内容的写操作（删除应用、修改 priority 等），
+     * 应在<b>事务提交后</b>调用。
+     */
+    void invalidateGoodAppPageCache();
 
 }
