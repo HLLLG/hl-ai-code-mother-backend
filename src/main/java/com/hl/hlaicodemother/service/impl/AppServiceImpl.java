@@ -16,6 +16,7 @@ import com.hl.hlaicodemother.core.AiCodeGeneratorFacade;
 import com.hl.hlaicodemother.core.builder.VueProjectBuilder;
 import com.hl.hlaicodemother.core.handler.StreamHandlerExecutor;
 import com.hl.hlaicodemother.manager.cache.CacheAsideTemplate;
+import com.hl.hlaicodemother.manager.cache.MultiLevelCacheTemplate;
 import com.hl.hlaicodemother.utils.CacheKeyUtils;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
@@ -98,6 +99,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private CacheAsideTemplate cacheAsideTemplate;
+
+    @Resource
+    private MultiLevelCacheTemplate multiLevelCacheTemplate;
 
     /**
      * 精选应用分页缓存 key 前缀。建议与其它业务独立，便于按前缀做批量失效。
@@ -418,9 +422,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             return queryGoodAppVOByPageFromDb(appQueryRequest);
         }
 
-        // 旁路缓存 + 空值哨兵 + 分布式锁防击穿
+        // 多级缓存：L1 Caffeine + 进程内单飞 + L2 Redis + Redisson 分布式锁防击穿
         String cacheKey = CacheKeyUtils.generateKeyWithPrefix(GOOD_APP_PAGE_CACHE_PREFIX, appQueryRequest);
-        return cacheAsideTemplate.getOrLoadWithLock(
+        return multiLevelCacheTemplate.getOrLoad(
                 cacheKey,
                 GOOD_APP_PAGE_CACHE_TTL,
                 new TypeReference<Page<AppVO>>() {}.getType(),
@@ -429,14 +433,15 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     /**
-     * 失效精选应用分页缓存（按前缀 + 延时双删）。
+     * 失效精选应用分页缓存：按前缀 + 延时双删，
+     * 同时通过 RTopic 广播让<b>所有节点</b>同步删 L1。
      * <p>
      * <b>调用时机</b>：管理员修改/删除应用、调整 priority 等会影响列表结果的写操作，
      * 应在<b>事务提交后</b>触发，避免出现"缓存被删 → 别的读请求拿到旧 DB 值并回写"的脏数据窗口。
      */
     @Override
     public void invalidateGoodAppPageCache() {
-        cacheAsideTemplate.delayedEvictByPattern(
+        multiLevelCacheTemplate.delayedEvictByPattern(
                 GOOD_APP_PAGE_CACHE_PREFIX + "*",
                 GOOD_APP_PAGE_CACHE_DOUBLE_DELETE_DELAY
         );

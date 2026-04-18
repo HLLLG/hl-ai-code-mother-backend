@@ -298,7 +298,7 @@ public class CacheAsideTemplate {
 
     private Duration negativeTtl(Duration ttl) {
         long fifth = ttl.toMillis() / 5;
-        long ms = Math.min(MAX_NULL_TTL.toMillis(), Math.max(MIN_NULL_TTL.toMillis(), fifth));
+        long ms = Math.clamp(MIN_NULL_TTL.toMillis(), fifth, MAX_NULL_TTL.toMillis());
         return Duration.ofMillis(ms);
     }
 }
