@@ -12,6 +12,7 @@ import org.bsc.langgraph4j.prebuilt.MessagesState;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.bsc.langgraph4j.action.AsyncNodeAction.node_async;
 
@@ -44,8 +45,10 @@ public class DiagramCollectorNode {
                 log.error("Mermaid 架构图生成出错：{}", e.getMessage());
             }
             context.setDiagrams(diagrams);
-            context.setCurrentStep("Mermaid 架构图生成");
-            return WorkflowContext.saveContext(context);
+            return Map.of(
+                    WorkflowContext.WORKFLOW_CONTEXT_KEY, context,
+                    WorkflowContext.DIAGRAMS_RESULT_KEY, diagrams
+            );
         });
     }
 }

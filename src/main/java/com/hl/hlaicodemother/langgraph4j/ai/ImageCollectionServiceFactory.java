@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ImageCollectionServiceFactory {
 
-    @Resource
+    @Resource(name = "openAiChatModel")
     private ChatModel chatModel;
 
     @Resource

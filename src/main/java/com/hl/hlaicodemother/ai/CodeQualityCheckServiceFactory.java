@@ -1,6 +1,5 @@
-package com.hl.hlaicodemother;
+package com.hl.hlaicodemother.ai;
 
-import com.hl.hlaicodemother.ai.CodeQualityCheckService;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.service.AiServices;
 import jakarta.annotation.Resource;
@@ -15,7 +14,7 @@ import org.springframework.context.annotation.Configuration;
 @Slf4j
 public class CodeQualityCheckServiceFactory {
 
-    @Resource
+    @Resource(name = "openAiChatModel")
     private ChatModel chatModel;
 
     /**

@@ -12,6 +12,7 @@ import org.bsc.langgraph4j.prebuilt.MessagesState;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.bsc.langgraph4j.action.AsyncNodeAction.node_async;
 
@@ -45,8 +46,10 @@ public class IllustrationCollectorNode {
                 log.error("插画搜索出错：{}", e.getMessage());
             }
             context.setIllustrations(illustrations);
-            context.setCurrentStep("插画搜索");
-            return WorkflowContext.saveContext(context);
+            return Map.of(
+                    WorkflowContext.WORKFLOW_CONTEXT_KEY, context,
+                    WorkflowContext.ILLUSTRATIONS_RESULT_KEY, illustrations
+            );
         });
     }
 }

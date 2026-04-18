@@ -6,6 +6,7 @@ import * as userController from './userController'
 import * as chatHistoryController from './chatHistoryController'
 import * as appMemberController from './appMemberController'
 import * as appController from './appController'
+import * as workflowSseController from './workflowSseController'
 import * as staticResourceController from './staticResourceController'
 import * as healthController from './healthController'
 export default {
@@ -13,6 +14,7 @@ export default {
   chatHistoryController,
   appMemberController,
   appController,
+  workflowSseController,
   staticResourceController,
   healthController,
 }

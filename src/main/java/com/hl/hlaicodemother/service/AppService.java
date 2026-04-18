@@ -5,6 +5,7 @@ import com.hl.hlaicodemother.model.dto.app.AppQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
 import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.vo.AppVO;
+import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
 import reactor.core.publisher.Flux;
@@ -123,5 +124,15 @@ public interface AppService extends IService<App> {
      * @param app 应用 id
      */
     void incrementDownloadCount(App app);
+
+    /**
+     * 分页查询"精选应用"列表（带旁路缓存 + 空值哨兵）。
+     * <p>
+     * 仅在 pageNum &lt;= 10 的热点页使用缓存，冷门深翻页直接查库，避免污染缓存。
+     *
+     * @param appQueryRequest 查询请求
+     * @return 分页结果（AppVO）
+     */
+    Page<AppVO> listGoodAppVOByPage(AppQueryRequest appQueryRequest);
 
 }

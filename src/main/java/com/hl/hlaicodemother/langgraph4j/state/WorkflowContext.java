@@ -30,6 +30,14 @@ public class WorkflowContext implements Serializable {
     public static final String WORKFLOW_CONTEXT_KEY = "workflowContext";
 
     /**
+     * 并发图片收集节点写入 MessagesState 的独立 key（避免并行合并时互相覆盖）
+     */
+    public static final String CONTENT_IMAGES_RESULT_KEY = "content_images_result";
+    public static final String ILLUSTRATIONS_RESULT_KEY = "illustrations_result";
+    public static final String DIAGRAMS_RESULT_KEY = "diagrams_result";
+    public static final String LOGOS_RESULT_KEY = "logos_result";
+
+    /**
      * 当前执行步骤
      */
     private String currentStep;
@@ -112,5 +120,17 @@ public class WorkflowContext implements Serializable {
      */
     public static Map<String, Object> saveContext(WorkflowContext context) {
         return Map.of(WORKFLOW_CONTEXT_KEY, context);
+    }
+
+    /**
+     * 从 state 读取并发收集节点写入的图片列表；无该 key 或类型不符时返回 null。
+     */
+    @SuppressWarnings("unchecked")
+    public static List<ImageResource> getConcurrentImageResult(MessagesState<String> state, String resultKey) {
+        Object value = state.data().get(resultKey);
+        if (value instanceof List<?>) {
+            return (List<ImageResource>) value;
+        }
+        return null;
     }
 }

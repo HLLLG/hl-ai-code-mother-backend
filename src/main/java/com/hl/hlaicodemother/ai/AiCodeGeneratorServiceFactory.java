@@ -8,6 +8,7 @@ import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
 import com.hl.hlaicodemother.service.ChatHistoryService;
+import com.hl.hlaicodemother.utils.SpringContextUtil;
 import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.memory.chat.MessageWindowChatMemory;
 import dev.langchain4j.model.chat.ChatModel;
@@ -29,14 +30,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Getter
 public class AiCodeGeneratorServiceFactory {
 
-    @Resource
+    @Resource(name = "openAiChatModel")
     private ChatModel chatModel;
-
-    @Resource
-    private StreamingChatModel openAiStreamingChatModel;
-
-    @Resource
-    private StreamingChatModel reasoningStreamingChatModel;
 
     @Resource
     private MyRedisChatMemoryStore chatMemoryStore;
@@ -108,13 +103,14 @@ public class AiCodeGeneratorServiceFactory {
         // 构建 AI 服务实例
         return switch (codeGenType) {
             case VUE_PROJECT -> {
+                // 使用多例模式的 StreamingChatModel 解决并发问题
+                StreamingChatModel reasoningStreamingChatModel = SpringContextUtil.getBean("reasoningStreamingChatModelPrototype", StreamingChatModel.class);
                 ToolManager toolManager = ToolManager.build(appId);
                 vueProjectFileToolsMap.put(appId, toolManager);
                 CancellableStreamingChatModelWrapper modelWrapper =
                         new CancellableStreamingChatModelWrapper(reasoningStreamingChatModel);
                 chatModelWrapperMap.put(appId, modelWrapper);
                 yield AiServices.builder(AiCodeGeneratorService.class)
-                        .chatModel(chatModel)
                         .streamingChatModel(modelWrapper)
                         .chatMemoryProvider(memoryId -> chatMemory)
                         .tools(toolManager.getAllTools())
@@ -124,11 +120,15 @@ public class AiCodeGeneratorServiceFactory {
                         )
                         .build();
             }
-            case HTML, MULTI_FILE -> AiServices.builder(AiCodeGeneratorService.class)
+            case HTML, MULTI_FILE -> {
+                // 使用多例模式的 StreamingChatModel 解决并发问题
+                StreamingChatModel openAiStreamingChatModel = SpringContextUtil.getBean("streamingChatModelPrototype", StreamingChatModel.class);
+                yield AiServices.builder(AiCodeGeneratorService.class)
                     .chatModel(chatModel)
                     .streamingChatModel(openAiStreamingChatModel)
                     .chatMemory(chatMemory)
                     .build();
+            }
             default ->
                     throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型: " + codeGenType.getValue());
         };

@@ -12,6 +12,7 @@ import org.bsc.langgraph4j.prebuilt.MessagesState;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.bsc.langgraph4j.action.AsyncNodeAction.node_async;
 
@@ -44,8 +45,10 @@ public class ContentImageCollectorNode {
                 log.error("获取内容图片出错：{}", e.getMessage());
             }
             context.setContentImages(contentImages);
-            context.setCurrentStep("内容图片收集");
-            return WorkflowContext.saveContext(context);
+            return Map.of(
+                    WorkflowContext.WORKFLOW_CONTEXT_KEY, context,
+                    WorkflowContext.CONTENT_IMAGES_RESULT_KEY, contentImages
+            );
         });
     }
 }

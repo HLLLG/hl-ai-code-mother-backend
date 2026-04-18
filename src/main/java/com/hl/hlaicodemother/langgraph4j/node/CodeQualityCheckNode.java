@@ -2,7 +2,7 @@ package com.hl.hlaicodemother.langgraph4j.node;
 
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
-import com.hl.hlaicodemother.CodeQualityCheckServiceFactory;
+import com.hl.hlaicodemother.ai.CodeQualityCheckServiceFactory;
 import com.hl.hlaicodemother.ai.CodeQualityCheckService;
 import com.hl.hlaicodemother.langgraph4j.model.QualityResult;
 import com.hl.hlaicodemother.langgraph4j.state.WorkflowContext;

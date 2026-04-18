@@ -1,6 +1,7 @@
 package com.hl.hlaicodemother.langgraph4j.node;
 
 import com.hl.hlaicodemother.ai.AiCodeGenTypeRoutingService;
+import com.hl.hlaicodemother.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.hl.hlaicodemother.langgraph4j.state.WorkflowContext;
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
 import com.hl.hlaicodemother.utils.SpringContextUtil;
@@ -25,8 +26,9 @@ public class RouterNode {
             CodeGenTypeEnum generationType = null;
             try {
                 // 获取AI路由服务
-                AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService =
-                        SpringContextUtil.getBean(AiCodeGenTypeRoutingService.class);
+                AiCodeGenTypeRoutingServiceFactory factory =
+                        SpringContextUtil.getBean(AiCodeGenTypeRoutingServiceFactory.class);
+                AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService = factory.aiCodeGenTypeRoutingService();
                 generationType = aiCodeGenTypeRoutingService.routeCodeGenType(context.getOriginalPrompt());
                 log.info("AI智能路由完成，选择类型: {} ({})", generationType.getValue(), generationType.getText());
             } catch (Exception e) {

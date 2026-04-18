@@ -342,15 +342,8 @@ public class AppController {
      */
     @PostMapping("good/list/page/vo")
     public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest appQueryRequest) {
-        ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
-        // 限制每页最多 20 个
-        ThrowUtils.throwIf(appQueryRequest.getPageSize() > 20, ErrorCode.PARAMS_ERROR, "每页最多20条");
-        appQueryRequest.setPriority(AppConstant.GOOD_APP_PRIORITY);
-        Page<App> appPage = appService.page(new Page<>(appQueryRequest.getPageNum(), appQueryRequest.getPageSize()),
-                appService.getQueryWrapper(appQueryRequest));
-        Page<AppVO> appVOPage = new Page<>(appPage.getPageNumber(), appPage.getPageSize(), appPage.getTotalRow());
-        appVOPage.setRecords(appService.getAppVOList(appPage.getRecords()));
-        return ResultUtils.success(appVOPage);
+        // 缓存读写（含空值哨兵、TTL 抖动、Redis 异常降级）均下沉到 Service 层
+        return ResultUtils.success(appService.listGoodAppVOByPage(appQueryRequest));
     }
 
 
@@ -444,6 +437,7 @@ public class AppController {
 
     /**
      * 获取app下载次数
+     *
      * @param appId
      * @return
      */

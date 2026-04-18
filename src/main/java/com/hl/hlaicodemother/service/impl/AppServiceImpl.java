@@ -6,6 +6,7 @@ import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.hl.hlaicodemother.ai.AiCodeGenTypeRoutingService;
+import com.hl.hlaicodemother.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.bizmq.ScreenshotMessageProducer;
 import com.hl.hlaicodemother.bizmq.model.ScreenshotTaskMessage;
@@ -14,6 +15,8 @@ import com.hl.hlaicodemother.constant.UserConstant;
 import com.hl.hlaicodemother.core.AiCodeGeneratorFacade;
 import com.hl.hlaicodemother.core.builder.VueProjectBuilder;
 import com.hl.hlaicodemother.core.handler.StreamHandlerExecutor;
+import com.hl.hlaicodemother.manager.cache.CacheAsideTemplate;
+import com.hl.hlaicodemother.utils.CacheKeyUtils;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.exception.ThrowUtils;
@@ -34,6 +37,8 @@ import com.hl.hlaicodemother.model.vo.UserVO;
 import com.hl.hlaicodemother.service.AppMemberService;
 import com.hl.hlaicodemother.service.AppService;
 import com.hl.hlaicodemother.service.UserService;
+import cn.hutool.core.lang.TypeReference;
+import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import jakarta.annotation.Resource;
@@ -46,6 +51,7 @@ import reactor.core.publisher.Flux;
 
 import java.io.File;
 import java.io.Serializable;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -88,7 +94,25 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private ScreenshotMessageProducer screenshotMessageProducer;
 
     @Resource
-    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+    private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
+
+    @Resource
+    private CacheAsideTemplate cacheAsideTemplate;
+
+    /**
+     * 精选应用分页缓存 key 前缀。建议与其它业务独立，便于按前缀做批量失效。
+     */
+    private static final String GOOD_APP_PAGE_CACHE_PREFIX = "good_app_page:";
+
+    /**
+     * 精选应用分页缓存 TTL。
+     */
+    private static final Duration GOOD_APP_PAGE_CACHE_TTL = Duration.ofMinutes(5);
+
+    /**
+     * 只缓存前 N 页：深翻页属于长尾，命中率低，缓存收益不高反而污染 Redis。
+     */
+    private static final int GOOD_APP_PAGE_CACHE_MAX_PAGE = 10;
 
 
     /**
@@ -158,6 +182,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         if (StrUtil.isBlank(app.getAppName())) {
             app.setAppName(StrUtil.sub(appAddRequest.getInitPrompt(), 0, 12));
         }
+        // 使用 Ai 智能选择代码生成类型（多例模式）
+        AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService = aiCodeGenTypeRoutingServiceFactory.aiCodeGenTypeRoutingService();
         CodeGenTypeEnum codeGenTypeEnum = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
         app.setCodeGenType(codeGenTypeEnum.getValue());
         app.setCurrentVersion(1);
@@ -372,6 +398,44 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "查询请求不能为空");
         }
         return QueryWrapper.create().eq("id", appQueryRequest.getId()).like("appName", appQueryRequest.getAppName()).like("cover", appQueryRequest.getCover()).like("initPrompt", appQueryRequest.getInitPrompt()).eq("codeGenType", appQueryRequest.getCodeGenType()).eq("deployKey", appQueryRequest.getDeployKey()).eq("priority", appQueryRequest.getPriority()).eq("userId", appQueryRequest.getUserId()).orderBy(appQueryRequest.getSortField(), "ascend".equals(appQueryRequest.getSortOrder()));
+    }
+
+    @Override
+    public Page<AppVO> listGoodAppVOByPage(AppQueryRequest appQueryRequest) {
+        ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
+        ThrowUtils.throwIf(appQueryRequest.getPageSize() > 20, ErrorCode.PARAMS_ERROR, "每页最多20条");
+        appQueryRequest.setPriority(AppConstant.GOOD_APP_PRIORITY);
+
+        // 冷数据（深翻页）不走缓存，直接查库
+        if (appQueryRequest.getPageNum() == null || appQueryRequest.getPageNum() > GOOD_APP_PAGE_CACHE_MAX_PAGE) {
+            return queryGoodAppVOByPageFromDb(appQueryRequest);
+        }
+
+        // 旁路缓存 + 空值哨兵：未命中则查库，查到为空也会写入负缓存
+        String cacheKey = CacheKeyUtils.generateKeyWithPrefix(GOOD_APP_PAGE_CACHE_PREFIX, appQueryRequest);
+        return cacheAsideTemplate.getOrLoad(
+                cacheKey,
+                GOOD_APP_PAGE_CACHE_TTL,
+                new TypeReference<Page<AppVO>>() {}.getType(),
+                () -> queryGoodAppVOByPageFromDb(appQueryRequest)
+        );
+    }
+
+    /**
+     * 真正的 DB 查询逻辑，被缓存层包裹。
+     * <p>
+     * 语义约定：<b>库里无结果时返回"空 Page"而非 null</b>，由模板根据业务需要判定是否写哨兵。
+     * 这里选择返回 totalRow=0 的 Page，外层模板仍会把它当作"非 null 的真实结果"缓存，
+     * 对于本场景（分页列表）这通常是期望行为——列表页常见结果就是"空列表"。
+     */
+    private Page<AppVO> queryGoodAppVOByPageFromDb(AppQueryRequest appQueryRequest) {
+        Page<App> appPage = this.page(
+                new Page<>(appQueryRequest.getPageNum(), appQueryRequest.getPageSize()),
+                getQueryWrapper(appQueryRequest)
+        );
+        Page<AppVO> appVOPage = new Page<>(appPage.getPageNumber(), appPage.getPageSize(), appPage.getTotalRow());
+        appVOPage.setRecords(getAppVOList(appPage.getRecords()));
+        return appVOPage;
     }
 
     @Override
