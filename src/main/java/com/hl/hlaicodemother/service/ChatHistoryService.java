@@ -42,6 +42,16 @@ public interface ChatHistoryService extends IService<ChatHistory> {
     Page<ChatHistoryVO> listAppChatHistoryByPage(Long appId, int pageSize, LocalDateTime lastedCreateTime,
                                                  User loginUser);
 
+    /**
+     * 获取应用对话历史首屏（可缓存）。
+     *
+     * @param appId 应用 id
+     * @param pageSize 页大小
+     * @param loginUser 当前登录用户
+     * @return 首屏对话列表
+     */
+    Page<ChatHistoryVO> listAppChatHistoryFirstPageCacheable(Long appId, int pageSize, User loginUser);
+
 
     /**
      * 加载对话历史到内存中。

@@ -16,6 +16,7 @@ import com.hl.hlaicodemother.core.AiCodeGeneratorFacade;
 import com.hl.hlaicodemother.core.builder.VueProjectBuilder;
 import com.hl.hlaicodemother.core.handler.StreamHandlerExecutor;
 import com.hl.hlaicodemother.manager.cache.CacheAsideTemplate;
+import com.hl.hlaicodemother.manager.cache.HotKeyCacheTemplate;
 import com.hl.hlaicodemother.manager.cache.MultiLevelCacheTemplate;
 import com.hl.hlaicodemother.utils.CacheKeyUtils;
 import com.hl.hlaicodemother.exception.BusinessException;
@@ -102,6 +103,14 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
 
     @Resource
     private MultiLevelCacheTemplate multiLevelCacheTemplate;
+
+    @Resource
+    private HotKeyCacheTemplate hotKeyCacheTemplate;
+
+    /**
+     * 应用详情缓存 key 前缀（JD-HotKey）。
+     */
+    private static final String APP_DETAIL_CACHE_PREFIX = "app_detail:";
 
     /**
      * 精选应用分页缓存 key 前缀。建议与其它业务独立，便于按前缀做批量失效。
@@ -338,6 +347,28 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     }
 
     @Override
+    public AppVO getAppVOByIdCacheable(Long id) {
+        ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不合法");
+        String cacheKey = buildAppDetailCacheKey(id);
+        AppVO cachedAppVO = hotKeyCacheTemplate.getOrLoad(cacheKey, AppVO.class, () -> {
+            App app = getById(id);
+            if (app == null) {
+                return null;
+            }
+            return getAppVO(app);
+        });
+        return copyCacheSafeAppVO(cachedAppVO);
+    }
+
+    @Override
+    public void invalidateAppDetailCache(Long appId) {
+        if (appId == null || appId <= 0) {
+            return;
+        }
+        hotKeyCacheTemplate.evict(buildAppDetailCacheKey(appId));
+    }
+
+    @Override
     public boolean removeById(Serializable id) {
         if (id == null) {
             return false;
@@ -348,6 +379,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
             result = super.removeById(id);
             if (result) {
                 chatHistoryService.remove(new QueryWrapper().eq("appId", id));
+                Long appId = parseAppId(id);
+                invalidateAppDetailCache(appId);
                 // 写后失效：精选列表可能受影响，按前缀延时双删
                 invalidateGoodAppPageCache();
             }
@@ -494,6 +527,40 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private void validateChatEditor(Long appId, User user) {
         if (!appChatWebSocketHandler.isChatEditor(appId, user.getId())) {
             throw new BusinessException(ErrorCode.NOT_AUTH_ERROR, "当前未进入对话状态，无法执行该操作");
+        }
+    }
+
+    private String buildAppDetailCacheKey(Long appId) {
+        return APP_DETAIL_CACHE_PREFIX + appId;
+    }
+
+    /**
+     * 返回可变字段隔离后的对象，避免用户态字段污染 HotKey 缓存值。
+     */
+    private AppVO copyCacheSafeAppVO(AppVO source) {
+        if (source == null) {
+            return null;
+        }
+        AppVO target = new AppVO();
+        BeanUtils.copyProperties(source, target);
+        target.setMyMemberRole(null);
+        target.setMyMemberStatus(null);
+        target.setChatOccupantUser(null);
+        return target;
+    }
+
+    private Long parseAppId(Serializable id) {
+        if (id == null) {
+            return null;
+        }
+        if (id instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(id));
+        } catch (NumberFormatException e) {
+            log.warn("Failed to parse appId for cache eviction, id={}", id);
+            return null;
         }
     }
 

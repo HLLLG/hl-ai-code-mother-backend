@@ -136,6 +136,7 @@ public class AppController {
         User loginUser = userService.getLoginUser(request);
         // 调用服务层方法，部署应用
         String deployUrl = appService.deployApp(appId, loginUser);
+        appService.invalidateAppDetailCache(appId);
         return ResultUtils.success(deployUrl);
     }
 
@@ -200,6 +201,7 @@ public class AppController {
         updateApp.setEditTime(LocalDateTime.now());
         boolean result = appService.updateById(updateApp);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用版本更新失败");
+        appService.invalidateAppDetailCache(appId);
         return ResultUtils.success(result);
     }
 
@@ -230,6 +232,7 @@ public class AppController {
         appService.validApp(app, false);
         boolean result = appService.updateById(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用更新失败");
+        appService.invalidateAppDetailCache(appUpdateRequest.getId());
         return ResultUtils.success(result);
     }
 
@@ -283,12 +286,12 @@ public class AppController {
     public BaseResponse<AppVO> getAppVoById(Long id, HttpServletRequest request) {
         ThrowUtils.throwIf(id == null || id <= 0, ErrorCode.PARAMS_ERROR);
         User loginUser = userService.getLoginUser(request);
-        // 查询数据库
-        App app = appService.getById(id);
-        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        appService.checkAppViewAuth(app, loginUser);
-        // 获取封装类（包含用户信息）
-        AppVO appVO = appService.getAppVO(app);
+        AppVO appVO = appService.getAppVOByIdCacheable(id);
+        ThrowUtils.throwIf(appVO == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        App appForAuth = new App();
+        appForAuth.setId(appVO.getId());
+        appForAuth.setUserId(appVO.getUserId());
+        appService.checkAppViewAuth(appForAuth, loginUser);
         fillMyMemberInfo(List.of(appVO), loginUser);
         Long chatOccupantUserId = appChatWebSocketHandler.getChatOccupantUserId(id);
         if (chatOccupantUserId != null) {
@@ -395,6 +398,7 @@ public class AppController {
         appService.validApp(app, false);
         boolean result = appService.updateById(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "应用更新失败");
+        appService.invalidateAppDetailCache(appAdminUpdateRequest.getId());
         // 写后失效：先更新 DB → 再删缓存（按前缀 + 延时双删），保证最终一致
         appService.invalidateGoodAppPageCache();
         return ResultUtils.success(result);

@@ -87,6 +87,21 @@ public interface AppService extends IService<App> {
     List<AppVO> getAppVOList(List<App> appList);
 
     /**
+     * 获取可缓存的应用详情（仅包含稳定字段，不含用户态实时信息）。
+     *
+     * @param id 应用 id
+     * @return 应用详情
+     */
+    AppVO getAppVOByIdCacheable(Long id);
+
+    /**
+     * 失效应用详情缓存。
+     *
+     * @param appId 应用 id
+     */
+    void invalidateAppDetailCache(Long appId);
+
+    /**
      * 校验应用归属
      *
      * @param app 应用

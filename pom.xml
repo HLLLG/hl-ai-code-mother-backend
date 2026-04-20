@@ -29,6 +29,7 @@
     <properties>
         <java.version>21</java.version>
         <langgraph4j.version>1.8.11</langgraph4j.version>
+        <netty.version>4.1.42.Final</netty.version>
     </properties>
     <dependencies>
         <dependency>
@@ -78,6 +79,17 @@
             <scope>compile</scope>
         </dependency>
 
+        <!-- hotkey -->
+        <dependency>
+            <groupId>com.jd.platform.hotkey</groupId>
+            <artifactId>hotkey-client</artifactId>
+            <version>0.0.4-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.jd.platform.hotkey</groupId>
+            <artifactId>common</artifactId>
+            <version>0.0.4-SNAPSHOT</version>
+        </dependency>
         <!-- Source: https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-amqp -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -184,6 +196,13 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.bsc.langgraph4j</groupId>
                 <artifactId>langgraph4j-bom</artifactId>

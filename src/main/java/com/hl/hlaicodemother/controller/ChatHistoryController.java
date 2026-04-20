@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.Set;
 
 /**
  * 对话历史 控制层。
@@ -34,6 +35,8 @@ import java.time.LocalDateTime;
 @RestController
 @RequestMapping("/chatHistory")
 public class ChatHistoryController {
+
+    private static final Set<Integer> CACHEABLE_FIRST_PAGE_SIZE_SET = Set.of(10, 20);
 
     @Resource
     private ChatHistoryService chatHistoryService;
@@ -55,8 +58,12 @@ public class ChatHistoryController {
                                                            @RequestParam(required = false) LocalDateTime lastCreatTime,
                                                            HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
-        Page<ChatHistoryVO> chatHistoryPage =
-                chatHistoryService.listAppChatHistoryByPage(appId, pageSize, lastCreatTime, loginUser);
+        Page<ChatHistoryVO> chatHistoryPage;
+        if (lastCreatTime == null && CACHEABLE_FIRST_PAGE_SIZE_SET.contains(pageSize)) {
+            chatHistoryPage = chatHistoryService.listAppChatHistoryFirstPageCacheable(appId, pageSize, loginUser);
+        } else {
+            chatHistoryPage = chatHistoryService.listAppChatHistoryByPage(appId, pageSize, lastCreatTime, loginUser);
+        }
         return ResultUtils.success(chatHistoryPage);
     }
 

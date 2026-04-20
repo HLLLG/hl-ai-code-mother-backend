@@ -7,6 +7,7 @@ import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.exception.ThrowUtils;
+import com.hl.hlaicodemother.manager.cache.HotKeyCacheTemplate;
 import com.hl.hlaicodemother.mapper.ChatHistoryMapper;
 import com.hl.hlaicodemother.model.dto.chatHistory.ChatHistoryQueryRequest;
 import com.hl.hlaicodemother.model.entity.App;
@@ -53,6 +54,8 @@ import java.util.stream.Collectors;
 public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatHistory>  implements ChatHistoryService{
 
     private static final DateTimeFormatter CHAT_HISTORY_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final String CHAT_FIRST_PAGE_CACHE_PREFIX = "chat_first_page:";
+    private static final Set<Integer> CACHEABLE_FIRST_PAGE_SIZE_SET = Set.of(10, 20);
 
     @Resource
     @Lazy
@@ -63,6 +66,9 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
 
     @Resource
     private AppMemberService appMemberService;
+
+    @Resource
+    private HotKeyCacheTemplate hotKeyCacheTemplate;
 
     @Override
     public ChatHistoryVO addChatMessage(Long appId, String message, String messageType, Long userId) {
@@ -84,6 +90,9 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         // 保存对话历史
         boolean result = this.save(chatHistory);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "保存对话消息失败");
+        CACHEABLE_FIRST_PAGE_SIZE_SET.forEach(
+                pageSize -> hotKeyCacheTemplate.evict(buildFirstPageCacheKey(appId, pageSize))
+        );
         return getChatHistoryVO(chatHistory);
     }
 
@@ -93,22 +102,25 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
         ThrowUtils.throwIf(pageSize <= 0 || pageSize >= 50, ErrorCode.PARAMS_ERROR, "页面大小必须在1-50之间");
         ThrowUtils.throwIf(loginUser == null, ErrorCode.PARAMS_ERROR, "登录用户不能为空");
-        // 获取应用信息
-        App app = appService.getById(appId);
-        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        // 校验应用查看权限
-        appService.checkAppViewAuth(app, loginUser);
-        // 构建查询条件
-        ChatHistoryQueryRequest chatHistoryQueryRequest = new ChatHistoryQueryRequest();
-        chatHistoryQueryRequest.setAppId(appId);
-        chatHistoryQueryRequest.setLastCreateTime(lastCreateTime);
-        QueryWrapper queryWrapper = this.getQueryWrapper(chatHistoryQueryRequest);
-        // 分页查询对话历史
-        Page<ChatHistory> chatHistoryPage = this.page(Page.of(1, pageSize), queryWrapper);
-        Page<ChatHistoryVO> chatHistoryVOPage = new Page<>(chatHistoryPage.getPageNumber(),
-                chatHistoryPage.getPageSize(), chatHistoryPage.getTotalRow());
-        chatHistoryVOPage.setRecords(getChatHistoryVOList(chatHistoryPage.getRecords()));
-        return chatHistoryVOPage;
+        checkAppViewAuth(appId, loginUser);
+        return queryAppChatHistoryByPageFromDb(appId, pageSize, lastCreateTime);
+    }
+
+    @Override
+    public Page<ChatHistoryVO> listAppChatHistoryFirstPageCacheable(Long appId, int pageSize, User loginUser) {
+        // 校验参数
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID不能为空");
+        ThrowUtils.throwIf(pageSize <= 0 || pageSize >= 50, ErrorCode.PARAMS_ERROR, "页面大小必须在1-50之间");
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.PARAMS_ERROR, "登录用户不能为空");
+        checkAppViewAuth(appId, loginUser);
+        String cacheKey = buildFirstPageCacheKey(appId, pageSize);
+        @SuppressWarnings("unchecked")
+        Page<ChatHistoryVO> page = hotKeyCacheTemplate.getOrLoad(
+                cacheKey,
+                Page.class,
+                () -> queryAppChatHistoryByPageFromDb(appId, pageSize, null)
+        );
+        return page;
     }
 
     @Override
@@ -336,5 +348,27 @@ public class ChatHistoryServiceImpl extends ServiceImpl<ChatHistoryMapper, ChatH
 
     private String buildMemberRoleKey(Long appId, Long userId) {
         return appId + "_" + userId;
+    }
+
+    private void checkAppViewAuth(Long appId, User loginUser) {
+        App app = appService.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        appService.checkAppViewAuth(app, loginUser);
+    }
+
+    private Page<ChatHistoryVO> queryAppChatHistoryByPageFromDb(Long appId, int pageSize, LocalDateTime lastCreateTime) {
+        ChatHistoryQueryRequest chatHistoryQueryRequest = new ChatHistoryQueryRequest();
+        chatHistoryQueryRequest.setAppId(appId);
+        chatHistoryQueryRequest.setLastCreateTime(lastCreateTime);
+        QueryWrapper queryWrapper = this.getQueryWrapper(chatHistoryQueryRequest);
+        Page<ChatHistory> chatHistoryPage = this.page(Page.of(1, pageSize), queryWrapper);
+        Page<ChatHistoryVO> chatHistoryVOPage = new Page<>(chatHistoryPage.getPageNumber(),
+                chatHistoryPage.getPageSize(), chatHistoryPage.getTotalRow());
+        chatHistoryVOPage.setRecords(getChatHistoryVOList(chatHistoryPage.getRecords()));
+        return chatHistoryVOPage;
+    }
+
+    private String buildFirstPageCacheKey(Long appId, int pageSize) {
+        return CHAT_FIRST_PAGE_CACHE_PREFIX + appId + ":" + pageSize;
     }
 }
