@@ -47,7 +47,8 @@ public class RedissonConfig {
                 // 锁 watchdog 默认 30s（这里显式声明便于阅读）
                 .setIdleConnectionTimeout(10_000)
                 .setConnectTimeout(5_000)
-                .setTimeout(3_000);
+                .setTimeout(3_000)
+                .setRetryAttempts(3);
         return Redisson.create(config);
     }
 }

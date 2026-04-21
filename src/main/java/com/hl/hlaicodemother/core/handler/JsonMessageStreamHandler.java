@@ -87,16 +87,33 @@ public class JsonMessageStreamHandler {
                         appChatWebSocketHandler.broadcastToApp(appId, user, streamId, stopPayLoad,
                                 AppChatStreamPhaseEnum.STOPPED.getValue(), editorVo);
                     } else {
-                        // 异步构造 Vue 项目
+                        // 异步构建 Vue 项目，监听 dist 目录构建完成后再发送刷新事件
                         int versionCount = (int) appVersionService.count(new QueryWrapper().eq(AppVersion::getAppId,
                                 appId));
                         String projectPath =
                                 AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId + "/v" + versionCount;
-                        vueProjectBuilder.buildProjectAsync(projectPath);
-                        // 任务正常完成，发送完成消息并提示刷新应用
-                        String donePayLoad = JSONUtil.toJsonStr(Map.of("refreshApp", true));
-                        appChatWebSocketHandler.broadcastToApp(appId, user, streamId, donePayLoad,
-                                AppChatStreamPhaseEnum.DONE.getValue(), editorVo);
+                        vueProjectBuilder.buildProjectAsync(projectPath).whenComplete((buildSuccess, throwable) -> {
+                            if (throwable != null) {
+                                log.error("异步构建 Vue 项目失败，projectPath={}", projectPath, throwable);
+                                String errPayLoad =
+                                        JSONUtil.toJsonStr(Map.of("message", "Vue 项目构建异常，未触发刷新应用"));
+                                appChatWebSocketHandler.broadcastToApp(appId, user, streamId, errPayLoad,
+                                        AppChatStreamPhaseEnum.ERROR.getValue(), editorVo);
+                                return;
+                            }
+                            if (Boolean.TRUE.equals(buildSuccess)) {
+                                // 构建成功（dist 目录已就绪）后再通知前端刷新
+                                String donePayLoad = JSONUtil.toJsonStr(Map.of("refreshApp", true));
+                                appChatWebSocketHandler.broadcastToApp(appId, user, streamId, donePayLoad,
+                                        AppChatStreamPhaseEnum.DONE.getValue(), editorVo);
+                            } else {
+                                // 构建失败，不触发刷新，避免前端无效刷新
+                                String errPayLoad =
+                                        JSONUtil.toJsonStr(Map.of("message", "Vue 项目构建失败，未触发刷新应用"));
+                                appChatWebSocketHandler.broadcastToApp(appId, user, streamId, errPayLoad,
+                                        AppChatStreamPhaseEnum.ERROR.getValue(), editorVo);
+                            }
+                        });
                     }
                     // 保存完整的 AI 响应到聊天历史
                     String aiResponse = chatHistoryBuilder.toString();

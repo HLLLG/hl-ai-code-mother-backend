@@ -5,22 +5,27 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
 public class VueProjectBuilder {
 
-    public void buildProjectAsync(String projectPath) {
+    public CompletableFuture<Boolean> buildProjectAsync(String projectPath) {
+        CompletableFuture<Boolean> resultFuture = new CompletableFuture<>();
         // 在单独的线程中执行构建，避免阻塞主线程
         Thread.ofVirtual().name("vue-builder-" + System.currentTimeMillis())
                 .start(() -> {
                     try {
-                        buildVueProject(projectPath);
+                        boolean buildSuccess = buildVueProject(projectPath);
+                        resultFuture.complete(buildSuccess);
                     } catch (Exception e) {
                         log.error("异步构建 Vue 项目时发生异常：{}", e.getMessage(), e);
+                        resultFuture.complete(false);
                     }
                 });
+        return resultFuture;
     }
 
     /**
@@ -51,10 +56,10 @@ public class VueProjectBuilder {
             log.error("npm run build 命令执行失败");
             return false;
         }
-        // 验证 dist 目录是否存在
-        File distDir = new File(projectDir, "dist");
-        if (!distDir.exists()) {
-            log.error("构建完成但 dist 目录未生成：{}", distDir.getAbsolutePath());
+        // 监听 dist 目录是否生成，确保前端刷新时资源已可用
+        File distDir = waitForDistDir(projectDir, 10, 500);
+        if (distDir == null) {
+            log.error("构建完成但 dist 目录未生成：{}", new File(projectDir, "dist").getAbsolutePath());
             return false;
         }
         log.info("构建成功，dist 项目路径：{}", distDir.getAbsolutePath());
@@ -100,6 +105,35 @@ public class VueProjectBuilder {
      */
     private boolean isWindows() {
         return System.getProperty("os.name").toLowerCase().startsWith("win");
+    }
+
+    /**
+     * 轮询等待 dist 目录生成
+     *
+     * @param projectDir 项目目录
+     * @param timeoutSeconds 超时时间（秒）
+     * @param pollIntervalMillis 轮询间隔（毫秒）
+     * @return dist 目录文件对象，超时未生成则返回 null
+     */
+    private File waitForDistDir(File projectDir, int timeoutSeconds, long pollIntervalMillis) {
+        File distDir = new File(projectDir, "dist");
+        if (distDir.exists() && distDir.isDirectory()) {
+            return distDir;
+        }
+        long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(timeoutSeconds);
+        while (System.currentTimeMillis() < deadline) {
+            if (distDir.exists() && distDir.isDirectory()) {
+                return distDir;
+            }
+            try {
+                Thread.sleep(pollIntervalMillis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("等待 dist 目录生成时被中断：{}", projectDir.getAbsolutePath());
+                return null;
+            }
+        }
+        return null;
     }
 
     /**
