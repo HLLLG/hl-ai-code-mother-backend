@@ -29,7 +29,7 @@ public @interface RateLimit {
     /**
      * 限流时间间隔
      */
-    int limitInterval() default 1;
+    int rateInterval() default 1;
 
     /**
      * 提示信息

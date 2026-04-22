@@ -123,11 +123,18 @@
             Redisson：仅用于分布式锁(RLock)与跨节点失效广播(RTopic)。
             刻意不使用 redisson-spring-boot-starter，避免它接管 RedisConnectionFactory
             而影响项目里既有的 StringRedisTemplate(基于 Lettuce)。
+            版本锁定到 3.13.6：与 JD hotkey-client 依赖的 Netty 4.1.42 保持兼容，
+            避免新版 Redisson 触发 gRPC/Netty ABI 冲突导致 etcd 连接失败。
         -->
         <dependency>
             <groupId>org.redisson</groupId>
             <artifactId>redisson</artifactId>
-            <version>3.50.0</version>
+            <version>3.13.6</version>
+        </dependency>
+        <!-- Redisson 需要的 Netty Unix 域套接字支持模块（netty-bom 未传递，需显式声明） -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-transport-native-unix-common</artifactId>
         </dependency>
         <!-- mybatis-flex-->
         <dependency>

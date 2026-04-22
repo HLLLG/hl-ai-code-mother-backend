@@ -1,6 +1,6 @@
 package com.hl.hlaicodemother.ratelimit.aspect;
 
-import cn.hutool.extra.servlet.ServletUtil;
+import cn.hutool.extra.servlet.JakartaServletUtil;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
 import com.hl.hlaicodemother.ratelimit.anotation.RateLimit;
@@ -13,6 +13,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.redisson.api.RRateLimiter;
+import org.redisson.api.RateIntervalUnit;
 import org.redisson.api.RateType;
 import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Component;
@@ -20,7 +21,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.lang.reflect.Method;
-import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
 @Component
 @Slf4j
@@ -47,8 +48,8 @@ public class RateLimitAspect {
 
         // 初始化限流器配置（如果不存在或已过期）
         if (!rateLimiter.isExists()) {
-            rateLimiter.setRate(RateType.OVERALL, rateLimit.rate(), Duration.ofSeconds(rateLimit.limitInterval()));
-            rateLimiter.expire(Duration.ofHours(1));
+            rateLimiter.setRate(RateType.OVERALL, rateLimit.rate(), rateLimit.rateInterval(), RateIntervalUnit.SECONDS);
+            rateLimiter.expire(1, TimeUnit.HOURS);
         }
 
         // 尝试获取令牌
@@ -82,7 +83,7 @@ public class RateLimitAspect {
                         .append(method.getName());
             }
             case USER -> {
-                // 用户及vi额：用户ID
+                // 用户维度：用户ID；无上下文或取用户失败时退化为 IP 限流（Hutool 解析真实客户端 IP）
                 try {
                     ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
                     if (attributes != null) {
@@ -90,26 +91,31 @@ public class RateLimitAspect {
                         Long userId = userService.getLoginUser(request).getId();
                         keyBuilder.append("user:").append(userId);
                     } else {
-                        // 无法获取请求上下文，使用IP限流
-                        keyBuilder.append("ip:").append(ServletUtil.getClientIP(attributes.getRequest()));
+                        keyBuilder.append("ip:").append(resolveClientIp());
                     }
                 } catch (Exception e) {
-                    // 获取用户ID失败，使用IP限流
-                    ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-                    if (attributes != null) {
-                        keyBuilder.append("ip:").append(ServletUtil.getClientIP(attributes.getRequest()));
-                    } else {
-                        keyBuilder.append("ip:unknown");
-                    }
+                    keyBuilder.append("ip:").append(resolveClientIp());
                 }
             }
             case IP -> {
-                // 获取IP地址
-                keyBuilder.append("ip:").append(getClientIP());
+                keyBuilder.append("ip:").append(resolveClientIp());
             }
             default -> throw  new BusinessException(ErrorCode.SYSTEM_ERROR, "限流类型错误");
         }
         return keyBuilder.toString();
+    }
+
+    /**
+     * 使用 Hutool 从当前请求解析客户端 IP。
+     * Spring Boot 3 使用 Jakarta Servlet API，须用 {@code JakartaServletUtil}，不可使用基于 javax 的 {@code ServletUtil}。
+     */
+    private String resolveClientIp() {
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attributes == null) {
+            return "unknown";
+        }
+        String ip = JakartaServletUtil.getClientIP(attributes.getRequest());
+        return ip != null && !ip.isEmpty() ? ip : "unknown";
     }
 
 }

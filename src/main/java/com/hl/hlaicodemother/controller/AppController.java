@@ -20,6 +20,8 @@ import com.hl.hlaicodemother.model.entity.AppMember;
 import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.vo.AppVO;
+import com.hl.hlaicodemother.ratelimit.anotation.RateLimit;
+import com.hl.hlaicodemother.ratelimit.enums.RateLimitType;
 import com.hl.hlaicodemother.service.*;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -77,6 +79,7 @@ public class AppController {
      * @param request
      * @return
      */
+    @RateLimit(limitType = RateLimitType.USER, rate = 5, rateInterval = 60, message = "AI 对话请求过于频繁，请稍后再试")
     @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId, @RequestParam String message,
                                                        @RequestParam Boolean isAdd,
