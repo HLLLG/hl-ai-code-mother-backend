@@ -1,6 +1,7 @@
 package com.hl.hlaicodemother.ai;
 
 import com.hl.hlaicodemother.model.enums.CodeGenTypeEnum;
+import com.hl.hlaicodemother.utils.SpringContextUtil;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
@@ -13,10 +14,12 @@ import static org.junit.jupiter.api.Assertions.*;
 public class AiCodeGenTypeRoutingServiceTest {
 
     @Resource
-    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+    private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
 
     @Test
     public void testRouteCodeGenType() {
+        AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService =
+                aiCodeGenTypeRoutingServiceFactory.aiCodeGenTypeRoutingService();
         String userPrompt = "做一个简单的个人介绍页面";
         CodeGenTypeEnum result = aiCodeGenTypeRoutingService.routeCodeGenType(userPrompt);
         log.info("用户需求: {} -> {}", userPrompt, result.getValue());

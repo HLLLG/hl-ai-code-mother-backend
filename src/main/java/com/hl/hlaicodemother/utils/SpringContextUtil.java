@@ -20,6 +20,13 @@ public class SpringContextUtil implements ApplicationContextAware {
     }
 
     /**
+     * 获取当前 Spring 上下文（在容器 {@link #setApplicationContext} 之后可用）
+     */
+    public static ApplicationContext getApplicationContext() {
+        return applicationContext;
+    }
+
+    /**
      * 获取Spring Bean
      */
     public static <T> T getBean(Class<T> clazz) {

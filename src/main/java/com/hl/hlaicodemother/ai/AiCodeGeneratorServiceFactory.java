@@ -3,6 +3,7 @@ package com.hl.hlaicodemother.ai;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.hl.hlaicodemother.ai.guardrail.PromptSafetyInputGuardrail;
+import com.hl.hlaicodemother.ai.guardrail.RetryOutputGuardrail;
 import com.hl.hlaicodemother.ai.tools.ToolManager;
 import com.hl.hlaicodemother.config.MyRedisChatMemoryStore;
 import com.hl.hlaicodemother.exception.BusinessException;
@@ -39,7 +40,6 @@ public class AiCodeGeneratorServiceFactory {
 
     @Resource
     private ChatHistoryService chatHistoryService;
-
 
     /**
      * AI 服务实例缓存
@@ -121,6 +121,8 @@ public class AiCodeGeneratorServiceFactory {
                                         "Error: that is no tool called " + toolExecutionRequest.name())
                         )
                         .inputGuardrails(new PromptSafetyInputGuardrail())
+//                        .outputGuardrails(new RetryOutputGuardrail()) 可能会导致无法流式输出，所以关闭
+                        .maxSequentialToolsInvocations(20) // 最多连续调用20次工具
                         .build();
             }
             case HTML, MULTI_FILE -> {
@@ -132,6 +134,7 @@ public class AiCodeGeneratorServiceFactory {
                         .streamingChatModel(openAiStreamingChatModel)
                         .chatMemory(chatMemory)
                         .inputGuardrails(new PromptSafetyInputGuardrail())
+//                        .outputGuardrails(new RetryOutputGuardrail()) 可能会导致无法流式输出，所以关闭
                         .build();
             }
             default ->

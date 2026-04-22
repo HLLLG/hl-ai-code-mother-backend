@@ -38,7 +38,8 @@ public final class ToolManager {
                 new FileWriteTool(appId),
                 new FileModifyTool(appId),
                 new FileDirReadTool(appId),
-                new FileReadTool(appId)
+                new FileReadTool(appId),
+                new ExitTool(appId)
         };
         // 初始化工具映射
         for (BaseTool tool : newTools) {
