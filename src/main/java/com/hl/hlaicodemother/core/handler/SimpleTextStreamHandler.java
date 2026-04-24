@@ -4,6 +4,8 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.hl.hlaicodemother.ai.AiGenerationTaskManager;
 import com.hl.hlaicodemother.manager.websocket.AppChatWebSocketHandler;
+import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatMessageTypeEnum;
+import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatResponseMessage;
 import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatStreamPhaseEnum;
 import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.enums.ChatHistoryMessageTypeEnum;
@@ -49,9 +51,10 @@ public class SimpleTextStreamHandler {
                                 AppChatStreamPhaseEnum.STOPPED.getValue(), editorVo);
                     } else {
                         // 任务正常完成，发送完成消息并提示刷新应用
-                        String donePayLoad = JSONUtil.toJsonStr(Map.of("refreshApp", true));
-                        appChatWebSocketHandler.broadcastToApp(appId, user, streamId, donePayLoad,
-                                AppChatStreamPhaseEnum.DONE.getValue(), editorVo);
+                        AppChatResponseMessage appChatResponseMessage = new AppChatResponseMessage();
+                        appChatResponseMessage.setType(AppChatMessageTypeEnum.BUILD_DONE.getValue());
+                        appChatResponseMessage.setMessage("项目构建完成");
+                        appChatWebSocketHandler.broadcastToApp(appId, appChatResponseMessage);
                     }
                     // 保存完整的 AI 响应到聊天历史
                     String aiResponse = chunkBuilder.toString();

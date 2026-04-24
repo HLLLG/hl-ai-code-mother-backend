@@ -103,3 +103,12 @@ hotkey:
   caffeine-size: 5000
   push-period: 500
   etcd-server: http://127.0.0.1:2379
+# 监控
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus  # 暴露三个端点
+  endpoint:
+    health:
+      show-details: always  # 健康检查显示详细信息

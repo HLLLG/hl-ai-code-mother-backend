@@ -66,11 +66,7 @@
             >（{{ formattedCodeDownloadCount }}）</span
           >
         </a-button>
-        <a-button
-          v-if="appInfo?.deployKey"
-          type="primary"
-          @click="openExistingDeployment"
-        >
+        <a-button v-if="appInfo?.deployKey" type="primary" @click="openExistingDeployment">
           <template #icon>
             <LinkOutlined />
           </template>
@@ -229,9 +225,7 @@
         <div class="preview-header">
           <h3>生成后的网页展示</h3>
           <div class="preview-actions">
-            <a-tag v-if="isEditMode" color="red">
-              <EditOutlined /> 编辑模式 · 点击选择元素
-            </a-tag>
+            <a-tag v-if="isEditMode" color="red"> <EditOutlined /> 编辑模式 · 点击选择元素 </a-tag>
             <a-button v-if="previewUrl" type="link" @click="refreshPreview">
               <template #icon>
                 <ReloadOutlined />
@@ -337,13 +331,8 @@ const loginUserStore = userLoginStore()
 const CHAT_HISTORY_PAGE_SIZE = 10
 
 // 可视化编辑
-const {
-  isEditMode,
-  selectedElements,
-  enterEditMode,
-  exitEditMode,
-  removeSelectedElement,
-} = useVisualEditor()
+const { isEditMode, selectedElements, enterEditMode, exitEditMode, removeSelectedElement } =
+  useVisualEditor()
 const previewIframeRef = ref<HTMLIFrameElement>()
 
 // 应用信息
@@ -889,13 +878,6 @@ const handleCollaborationChatStream = (msg?: AppChatWsMessage) => {
     return
   }
 
-  // 处理生成完成：结束加载状态并刷新应用信息
-  if (phase === APP_CHAT_STREAM_PHASE.DONE) {
-    finalizeObserverAiPlaceholder(streamId, {})
-    scheduleCollaborationStreamRefresh()
-    return
-  }
-
   // 处理生成停止：标记为已停止并刷新应用信息
   if (phase === APP_CHAT_STREAM_PHASE.STOPPED) {
     finalizeObserverAiPlaceholder(streamId, { stopped: true })
@@ -1014,6 +996,10 @@ const connectChatSocket = async () => {
 
   socket.on(APP_CHAT_MESSAGE_TYPE_ENUM.CHAT_STREAM, (msg?: AppChatWsMessage) => {
     handleCollaborationChatStream(msg)
+  })
+
+  socket.on(APP_CHAT_MESSAGE_TYPE_ENUM.BUILD_DONE, (msg?: AppChatWsMessage) => {
+    scheduleCollaborationStreamRefresh()
   })
 
   socket.on(APP_CHAT_MESSAGE_TYPE_ENUM.EXIT_CHAT, (msg?: AppChatWsMessage) => {

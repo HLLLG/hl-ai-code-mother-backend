@@ -18,6 +18,8 @@ import com.hl.hlaicodemother.core.handler.StreamHandlerExecutor;
 import com.hl.hlaicodemother.manager.cache.CacheAsideTemplate;
 import com.hl.hlaicodemother.manager.cache.HotKeyCacheTemplate;
 import com.hl.hlaicodemother.manager.cache.MultiLevelCacheTemplate;
+import com.hl.hlaicodemother.monitor.MonitorContext;
+import com.hl.hlaicodemother.monitor.MonitorContextHolder;
 import com.hl.hlaicodemother.utils.CacheKeyUtils;
 import com.hl.hlaicodemother.exception.BusinessException;
 import com.hl.hlaicodemother.exception.ErrorCode;
@@ -170,11 +172,20 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         startPayload.put("user", editorVo);
         appChatWebSocketHandler.broadcastToApp(appId, user, streamId, AppChatStreamPhaseEnum.START.getValue(),
                 JSONUtil.toJsonStr(startPayload), editorVo);
+        // 设置监控上下文
+        MonitorContextHolder.set(MonitorContext.builder()
+                .appId(appId.toString())
+                .userId(user.getId().toString())
+                .build());
         // 调用 AI 模型接口，生成代码
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, app,
                 taskKey, isAdd);
         return streamHandlerExecutor.doExecute(codeStream, appId, streamId, user, taskKey, editorVo,
-                appChatWebSocketHandler, chatHistoryService, aiGenerationTaskManager, codeGenTypeEnum);
+                appChatWebSocketHandler, chatHistoryService, aiGenerationTaskManager, codeGenTypeEnum)
+                .doFinally(signalType -> {
+                    // 移除监控上下文
+                    MonitorContextHolder.remove();
+                });
     }
 
     @Override
@@ -267,7 +278,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
         // 返回部署访问地址
-        String deployUrl = String.format("%s/%s/v%s/", AppConstant.CODE_DEPLOY_HOST, app.getDeployKey(),
+        String deployUrl = String.format("%s/%s/v%s/", AppConstant.CODE_DEPLOY_HOST, deployKey,
                 app.getCurrentVersion());
         ;
         generateAppScreenshotAsync(appId, deployUrl);

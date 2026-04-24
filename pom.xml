@@ -79,6 +79,16 @@
             <scope>compile</scope>
         </dependency>
 
+        <!-- actuator暴露监控端点 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!-- 将指标转换为prometheus格式 -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
         <!-- hotkey -->
         <dependency>
             <groupId>com.jd.platform.hotkey</groupId>

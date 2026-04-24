@@ -11,6 +11,8 @@ import com.hl.hlaicodemother.ai.tools.ToolManager;
 import com.hl.hlaicodemother.constant.AppConstant;
 import com.hl.hlaicodemother.core.builder.VueProjectBuilder;
 import com.hl.hlaicodemother.manager.websocket.AppChatWebSocketHandler;
+import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatMessageTypeEnum;
+import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatResponseMessage;
 import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatStreamPhaseEnum;
 import com.hl.hlaicodemother.model.entity.AppVersion;
 import com.hl.hlaicodemother.model.entity.User;
@@ -102,16 +104,17 @@ public class JsonMessageStreamHandler {
                                 return;
                             }
                             if (Boolean.TRUE.equals(buildSuccess)) {
-                                // 构建成功（dist 目录已就绪）后再通知前端刷新
-                                String donePayLoad = JSONUtil.toJsonStr(Map.of("refreshApp", true));
-                                appChatWebSocketHandler.broadcastToApp(appId, user, streamId, donePayLoad,
-                                        AppChatStreamPhaseEnum.DONE.getValue(), editorVo);
+                                // 任务正常完成，发送完成消息并提示刷新应用
+                                AppChatResponseMessage appChatResponseMessage = new AppChatResponseMessage();
+                                appChatResponseMessage.setType(AppChatMessageTypeEnum.BUILD_DONE.getValue());
+                                appChatResponseMessage.setMessage("项目构建完成");
+                                appChatWebSocketHandler.broadcastToApp(appId, appChatResponseMessage);
                             } else {
                                 // 构建失败，不触发刷新，避免前端无效刷新
-                                String errPayLoad =
-                                        JSONUtil.toJsonStr(Map.of("message", "Vue 项目构建失败，未触发刷新应用"));
-                                appChatWebSocketHandler.broadcastToApp(appId, user, streamId, errPayLoad,
-                                        AppChatStreamPhaseEnum.ERROR.getValue(), editorVo);
+                                AppChatResponseMessage appChatResponseMessage = new AppChatResponseMessage();
+                                appChatResponseMessage.setType(AppChatMessageTypeEnum.ERROR.getValue());
+                                appChatResponseMessage.setMessage("Vue 项目构建失败");
+                                appChatWebSocketHandler.broadcastToApp(appId, appChatResponseMessage);
                             }
                         });
                     }

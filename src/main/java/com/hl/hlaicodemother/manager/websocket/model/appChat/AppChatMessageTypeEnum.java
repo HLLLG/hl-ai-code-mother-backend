@@ -15,7 +15,8 @@ public enum AppChatMessageTypeEnum {
     EXIT_CHAT("退出聊天状态", "EXIT_CHAT"),
     CHAT_ACTION("执行聊天动作", "CHAT_ACTION"),
     /** 围观用户实时同步编辑者与 AI 的对话流（分片与起止） */
-    CHAT_STREAM("对话流式同步", "CHAT_STREAM");
+    CHAT_STREAM("对话流式同步", "CHAT_STREAM"),
+    BUILD_DONE("构建完成", "BUILD_DONE");
 
     private final String text;
 

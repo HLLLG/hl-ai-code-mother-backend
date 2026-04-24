@@ -220,7 +220,6 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-
     public boolean isChatEditor(Long appId, Long userId) {
         if (appId == null || userId == null) {
             return false;
@@ -273,7 +272,7 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
      * @param excludeSession
      * @throws Exception
      */
-    private void broadcastToApp(Long appId, AppChatResponseMessage appChatResponseMessage,
+    public void broadcastToApp(Long appId, AppChatResponseMessage appChatResponseMessage,
                                 WebSocketSession excludeSession) {
         try {
             // 获取应用所有会话
@@ -300,7 +299,7 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
     /**
      * 广播应用协作事件（默认所有会话）
      */
-    private void broadcastToApp(Long appId, AppChatResponseMessage appChatResponseMessage){
+    public void broadcastToApp(Long appId, AppChatResponseMessage appChatResponseMessage){
         broadcastToApp(appId, appChatResponseMessage, null);
     }
 

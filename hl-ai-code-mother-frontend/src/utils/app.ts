@@ -43,6 +43,7 @@ export const APP_CHAT_MESSAGE_TYPE_ENUM = {
   CHAT_ACTION: 'CHAT_ACTION',
   /** 围观：同步编辑者与 AI 的流式对话 */
   CHAT_STREAM: 'CHAT_STREAM',
+  BUILD_DONE: 'BUILD_DONE',
 }
 
 export const APP_CHAT_MESSAGE_TYPE_MAP = {

@@ -122,7 +122,7 @@ public class AiCodeGeneratorServiceFactory {
                         )
                         .inputGuardrails(new PromptSafetyInputGuardrail())
 //                        .outputGuardrails(new RetryOutputGuardrail()) 可能会导致无法流式输出，所以关闭
-                        .maxSequentialToolsInvocations(20) // 最多连续调用20次工具
+                        .maxSequentialToolsInvocations(30) // 最多连续调用20次工具
                         .build();
             }
             case HTML, MULTI_FILE -> {
@@ -130,7 +130,6 @@ public class AiCodeGeneratorServiceFactory {
                 StreamingChatModel openAiStreamingChatModel = SpringContextUtil.getBean("streamingChatModelPrototype"
                         , StreamingChatModel.class);
                 yield AiServices.builder(AiCodeGeneratorService.class)
-                        .chatModel(chatModel)
                         .streamingChatModel(openAiStreamingChatModel)
                         .chatMemory(chatMemory)
                         .inputGuardrails(new PromptSafetyInputGuardrail())

@@ -19,6 +19,7 @@ import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.io.Serializable;
 import java.lang.reflect.Type;
 import java.time.Duration;
 import java.util.HashSet;
@@ -386,12 +387,13 @@ public class MultiLevelCacheTemplate {
     }
 
     /**
-     * RTopic 广播消息体。POJO 形式便于 Redisson Jackson 编解码。
+     * RTopic 广播消息体。需实现 {@link Serializable}：Redisson 默认用 Marshalling 编码 topic 消息。
      */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class InvalidateMessage {
+    public static class InvalidateMessage implements Serializable {
+        private static final long serialVersionUID = 1L;
         private String type;
         private String value;
         private String sender;
