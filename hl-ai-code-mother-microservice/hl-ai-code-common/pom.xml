@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.hl</groupId>
+        <artifactId>hl-ai-code-mother-microservice</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>hl-ai-code-common</artifactId>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <!-- 腾讯云 COS 对象存储 -->
+        <dependency>
+            <groupId>com.qcloud</groupId>
+            <artifactId>cos_api</artifactId>
+            <version>5.6.227</version>
+        </dependency>
+        <!-- MyBatis Flex 代码生成 -->
+        <dependency>
+            <groupId>com.mybatis-flex</groupId>
+            <artifactId>mybatis-flex-codegen</artifactId>
+            <version>1.11.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+        </dependency>
+        <!-- hotkey -->
+        <dependency>
+            <groupId>com.jd.platform.hotkey</groupId>
+            <artifactId>hotkey-client</artifactId>
+            <version>0.0.4-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.jd.platform.hotkey</groupId>
+            <artifactId>common</artifactId>
+            <version>0.0.4-SNAPSHOT</version>
+        </dependency>
+        <!-- caffeine本地缓存 -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+        <!--
+            Redisson：仅用于分布式锁(RLock)与跨节点失效广播(RTopic)。
+            刻意不使用 redisson-spring-boot-starter，避免它接管 RedisConnectionFactory
+            而影响项目里既有的 StringRedisTemplate(基于 Lettuce)。
+            版本锁定到 3.13.6：与 JD hotkey-client 依赖的 Netty 4.1.42 保持兼容，
+            避免新版 Redisson 触发 gRPC/Netty ABI 冲突导致 etcd 连接失败。
+        -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <version>3.13.6</version>
+        </dependency>
+        <!-- Spring Session + Redis -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+        <!-- Redisson 需要的 Netty Unix 域套接字支持模块（netty-bom 未传递，需显式声明） -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-transport-native-unix-common</artifactId>
+        </dependency>
+        <!-- Spring Session + Redis -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-data-redis</artifactId>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,0 +1,7 @@
+# 热 key 探测
+hotkey:
+  enabled: true
+  app-name: hl-ai-code-mother
+  caffeine-size: 5000
+  push-period: 500
+  etcd-server: http://127.0.0.1:2379
