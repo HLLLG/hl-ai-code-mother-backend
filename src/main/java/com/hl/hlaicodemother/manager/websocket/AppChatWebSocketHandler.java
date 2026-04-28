@@ -45,9 +45,6 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
     private UserService userService;
 
     @Resource
-    private AppMemberService appMemberService;
-
-    @Resource
     private ObjectMapper objectMapper;
 
     @Override

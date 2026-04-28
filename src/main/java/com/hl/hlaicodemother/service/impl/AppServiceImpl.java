@@ -101,9 +101,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App> implements AppSe
     private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
 
     @Resource
-    private CacheAsideTemplate cacheAsideTemplate;
-
-    @Resource
     private MultiLevelCacheTemplate multiLevelCacheTemplate;
 
     @Resource
