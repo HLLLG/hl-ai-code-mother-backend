@@ -27,6 +27,8 @@
         <spring-cloud-alibaba.version>2023.0.1.0</spring-cloud-alibaba.version>
         <dubbo.version>3.3.0</dubbo.version>
         <grpc.version>1.30.1</grpc.version>
+        <!-- JD HotKey uses etcd-java 0.0.16 + grpc-netty 1.30.1, which is not compatible with newer Netty. -->
+        <netty.version>4.1.42.Final</netty.version>
     </properties>
 
     <dependencies>
@@ -63,6 +65,14 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- Keep Netty aligned with JD HotKey's grpc-netty 1.30.1 / etcd-java 0.0.16 stack. -->
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-bom</artifactId>
+                <version>${netty.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>

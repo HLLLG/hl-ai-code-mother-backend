@@ -19,6 +19,14 @@ spring:
       port: 6379
       password:
       ttl: 3600
+# 热 key 探测
+hotkey:
+  enabled: true
+  client-enabled: true
+  app-name: hl-ai-code-app
+  caffeine-size: 5000
+  push-period: 500
+  etcd-server: http://127.0.0.1:2379
 server:
   port: 8125
   servlet:

@@ -1,7 +1,17 @@
 package com.hl.hlaicodemother.manager.websocket;
 
-import cn.hutool.core.collection.CollUtil;
-import cn.hutool.json.JSONUtil;
+import java.io.IOException;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.apache.dubbo.config.annotation.DubboReference;
+import org.springframework.stereotype.Component;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.TextMessage;
+import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.handler.TextWebSocketHandler;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hl.hlaicodemother.innerservice.InnerUserService;
 import com.hl.hlaicodemother.manager.websocket.model.appChat.AppChatMessageTypeEnum;
@@ -11,21 +21,12 @@ import com.hl.hlaicodemother.model.entity.AppMember;
 import com.hl.hlaicodemother.model.entity.User;
 import com.hl.hlaicodemother.model.enums.AppMemberRoleEnum;
 import com.hl.hlaicodemother.model.vo.UserVO;
+
+import cn.hutool.core.collection.CollUtil;
+import cn.hutool.json.JSONUtil;
 import jakarta.annotation.Resource;
 import jakarta.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.dubbo.config.annotation.DubboReference;
-import org.springframework.context.annotation.Lazy;
-import org.springframework.stereotype.Component;
-import org.springframework.web.socket.CloseStatus;
-import org.springframework.web.socket.TextMessage;
-import org.springframework.web.socket.WebSocketSession;
-import org.springframework.web.socket.handler.TextWebSocketHandler;
-
-import java.io.IOException;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 应用协作对话 WebSocket 处理器
@@ -308,6 +309,9 @@ public class AppChatWebSocketHandler extends TextWebSocketHandler {
                                UserVO editorVo){
         // 获取该应用下的所有 WebSocket 会话
         Set<WebSocketSession> sessionSet = appSessions.get(appId);
+        if (CollUtil.isEmpty(sessionSet)) {
+            return;
+        }
         WebSocketSession excludeSession = null;
         for (WebSocketSession session : sessionSet) {
             // 从会话属性中获取当前用户信息
